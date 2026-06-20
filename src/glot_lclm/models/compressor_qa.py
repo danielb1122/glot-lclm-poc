@@ -81,6 +81,8 @@ class CompressedQAModel(nn.Module):
         ).to(self.device)
         outputs = self.encoder(**batch, output_hidden_states=True, return_dict=True)
         hidden = _last_hidden(outputs)
+        self.pooler.to(hidden.device)
+        self.adapter.to(hidden.device)
         pooled = self.pooler(hidden, batch["attention_mask"])
         adapted = self.adapter(pooled.latents)
         return adapted, pooled.latent_mask.to(self.device), pooled.aux
