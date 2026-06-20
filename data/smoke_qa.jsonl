@@ -1,0 +1,5 @@
+{"id":"smoke-1","question":"What color is the sky?","context":"Paragraph 0: The sky is blue. Paragraph 1: Grass is green.","answer":"blue"}
+{"id":"smoke-2","question":"Where does Ada live?","context":"Paragraph 0: Ada lives in Haifa. Paragraph 1: Ben lives in Tel Aviv.","answer":"Haifa"}
+{"id":"smoke-3","question":"What animal says meow?","context":"Paragraph 0: A dog says bark. Paragraph 1: A cat says meow.","answer":"cat"}
+{"id":"smoke-4","question":"What fruit is yellow?","context":"Paragraph 0: A banana is yellow. Paragraph 1: A cherry is red.","answer":"banana"}
+

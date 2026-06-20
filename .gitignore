@@ -12,9 +12,10 @@ wandb/
 outputs/
 checkpoints/
 data/
+!data/
+!data/smoke_qa.jsonl
 *.pt
 *.safetensors
 *.log
 *.out
 *.err
-

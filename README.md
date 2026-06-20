@@ -62,6 +62,17 @@ wandb login
 pytest -q
 ```
 
+CPU end-to-end smoke run with tiny random local models:
+
+```bash
+python -m glot_lclm.training.train \
+  --config configs/smoke_tiny_glot.yaml \
+  --device cpu \
+  --eval-max-examples 2
+```
+
+This checks the data loader, encoder, graph pooler, adapter, decoder, loss, generation, metrics, and checkpoint path. It is not a quality test.
+
 ## Train Mean Pooling Baseline
 
 ```bash

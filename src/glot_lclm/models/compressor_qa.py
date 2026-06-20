@@ -379,12 +379,24 @@ def set_trainability(
     train_encoder_lora: bool,
     train_decoder_lora: bool,
 ) -> None:
+    train_full_tiny_encoder = (
+        train_encoder_lora
+        and getattr(model, "cfg", {}).get("model", {}).get("encoder_name") == "tiny-random"
+    )
+    train_full_tiny_decoder = (
+        train_decoder_lora
+        and getattr(model, "cfg", {}).get("model", {}).get("decoder_name") == "tiny-random"
+    )
     for name, param in model.named_parameters():
         train = False
         if ".pooler." in f".{name}." or name.startswith("pooler."):
             train = train_pooler
         elif ".adapter." in f".{name}." or name.startswith("adapter."):
             train = train_adapter
+        elif train_full_tiny_encoder and name.startswith("encoder."):
+            train = True
+        elif train_full_tiny_decoder and name.startswith("decoder."):
+            train = True
         elif name.startswith("encoder.") and "lora_" in name:
             train = train_encoder_lora
         elif name.startswith("decoder.") and "lora_" in name:

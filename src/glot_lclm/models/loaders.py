@@ -4,7 +4,15 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
-from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
+from transformers import (
+    AutoModel,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BertConfig,
+    BertModel,
+    GPT2Config,
+    GPT2LMHeadModel,
+)
 
 from glot_lclm.utils.runtime import get_dtype
 
@@ -41,6 +49,21 @@ def _ensure_pad_token(tokenizer):
 
 
 def load_encoder(name: str, cfg: dict) -> LoadedBackbone:
+    if name == "tiny-random":
+        tokenizer_name = cfg.get("tiny_tokenizer_name", "bert-base-uncased")
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        _ensure_pad_token(tokenizer)
+        config = BertConfig(
+            vocab_size=len(tokenizer),
+            hidden_size=int(cfg.get("tiny_hidden_size", 64)),
+            num_hidden_layers=int(cfg.get("tiny_encoder_layers", 2)),
+            num_attention_heads=int(cfg.get("tiny_attention_heads", 4)),
+            intermediate_size=int(cfg.get("tiny_intermediate_size", 128)),
+            pad_token_id=tokenizer.pad_token_id,
+        )
+        model = BertModel(config)
+        return LoadedBackbone(model=model, tokenizer=tokenizer, hidden_size=config.hidden_size)
+
     tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=cfg.get("trust_remote_code", True))
     _ensure_pad_token(tokenizer)
     model = AutoModel.from_pretrained(
@@ -57,6 +80,23 @@ def load_encoder(name: str, cfg: dict) -> LoadedBackbone:
 
 
 def load_decoder(name: str, cfg: dict) -> LoadedBackbone:
+    if name == "tiny-random":
+        tokenizer_name = cfg.get("tiny_tokenizer_name", "bert-base-uncased")
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        _ensure_pad_token(tokenizer)
+        config = GPT2Config(
+            vocab_size=len(tokenizer),
+            n_embd=int(cfg.get("tiny_hidden_size", 64)),
+            n_layer=int(cfg.get("tiny_decoder_layers", 2)),
+            n_head=int(cfg.get("tiny_attention_heads", 4)),
+            n_inner=int(cfg.get("tiny_intermediate_size", 128)),
+            bos_token_id=tokenizer.cls_token_id or tokenizer.eos_token_id,
+            eos_token_id=tokenizer.sep_token_id or tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+        )
+        model = GPT2LMHeadModel(config)
+        return LoadedBackbone(model=model, tokenizer=tokenizer, hidden_size=config.n_embd)
+
     tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=cfg.get("trust_remote_code", True))
     _ensure_pad_token(tokenizer)
     model = AutoModelForCausalLM.from_pretrained(
@@ -96,4 +136,3 @@ def maybe_apply_lora(model: torch.nn.Module, lora_cfg: dict, task_type: str) -> 
         bias="none",
     )
     return get_peft_model(model, config)
-
