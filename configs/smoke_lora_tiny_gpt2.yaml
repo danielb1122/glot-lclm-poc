@@ -1,0 +1,99 @@
+experiment:
+  name: smoke_lora_tiny_gpt2
+  output_dir: outputs/smoke_lora_tiny_gpt2
+  seed: 42
+  wandb_project: glot-lclm-poc
+  wandb_entity: null
+  wandb_mode: disabled
+  tags: [smoke, lora, tiny-gpt2]
+
+dataset:
+  name: null
+  config_name: null
+  train_split: train
+  eval_split: train
+  local_data_files:
+    train: data/smoke_qa.jsonl
+  train_limit: 4
+  eval_limit: 4
+  max_context_tokens: 64
+  max_answer_tokens: 8
+  include_titles: true
+  evidence_auxiliary_weight: 0.0
+
+model:
+  encoder_name: sshleifer/tiny-gpt2
+  decoder_name: sshleifer/tiny-gpt2
+  share_tokenizer: true
+  load_in_4bit: false
+  dtype: float32
+  gradient_checkpointing: false
+  trust_remote_code: false
+
+compression:
+  pooler: mean
+  ratio: 4
+  adapter: mlp
+  adapter_hidden_multiplier: 1
+
+lora:
+  encoder:
+    enabled: true
+    r: 2
+    alpha: 4
+    dropout: 0.0
+    target_modules: [c_attn]
+  decoder:
+    enabled: true
+    r: 2
+    alpha: 4
+    dropout: 0.0
+    target_modules: [c_attn]
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 1
+  num_workers: 0
+  max_grad_norm: 1.0
+  save_every_steps: 20
+  eval_every_steps: 2
+  log_every_steps: 1
+  stages:
+    - name: task_lora_warmup_full_context
+      mode: full_context
+      steps: 2
+      lr: 1.0e-3
+      train_pooler: false
+      train_adapter: false
+      train_encoder_lora: false
+      train_decoder_lora: true
+    - name: adapter_pooler_alignment
+      mode: compressed
+      steps: 2
+      lr: 1.0e-3
+      train_pooler: false
+      train_adapter: true
+      train_encoder_lora: false
+      train_decoder_lora: false
+    - name: encoder_lora_alignment
+      mode: compressed
+      steps: 2
+      lr: 1.0e-3
+      train_pooler: false
+      train_adapter: true
+      train_encoder_lora: true
+      train_decoder_lora: false
+    - name: decoder_lora_task_tuning
+      mode: compressed
+      steps: 2
+      lr: 1.0e-3
+      train_pooler: false
+      train_adapter: true
+      train_encoder_lora: true
+      train_decoder_lora: true
+
+generation:
+  max_new_tokens: 4
+  do_sample: false
+  temperature: 0.0
+
