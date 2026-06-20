@@ -15,10 +15,9 @@ else
   source .venv/bin/activate
 fi
 
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip setuptools wheel
 python -m pip install -e ".[dev]"
 
 echo "Environment ready. Next:"
 echo "  huggingface-cli login"
 echo "  wandb login"
-

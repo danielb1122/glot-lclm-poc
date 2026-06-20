@@ -34,6 +34,7 @@ Python 3.10+ is recommended.
 cd /Users/danielboharon/glot-lclm-poc
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
 pip install -e .
 ```
 
