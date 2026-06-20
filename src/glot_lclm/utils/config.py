@@ -53,12 +53,31 @@ def apply_overrides(config: dict[str, Any], overrides: list[str]) -> dict[str, A
             raise ValueError(f"Override must be key=value, got: {item}")
         key, raw_value = item.split("=", 1)
         parts = key.split(".")
-        cursor = out
-        for part in parts[:-1]:
+        cursor: Any = out
+        for idx, part in enumerate(parts[:-1]):
+            next_part = parts[idx + 1]
+            if isinstance(cursor, list):
+                if not part.isdigit():
+                    raise ValueError(f"Expected list index in override {key!r}, got {part!r}")
+                list_idx = int(part)
+                cursor = cursor[list_idx]
+                continue
+
+            if not isinstance(cursor, dict):
+                raise ValueError(f"Cannot descend into non-container for override {key!r}")
+
             if part not in cursor or cursor[part] is None:
-                cursor[part] = {}
+                cursor[part] = [] if next_part.isdigit() else {}
             cursor = cursor[part]
-        cursor[parts[-1]] = _parse_scalar(raw_value)
+
+        leaf = parts[-1]
+        value = _parse_scalar(raw_value)
+        if isinstance(cursor, list):
+            if not leaf.isdigit():
+                raise ValueError(f"Expected list index in override {key!r}, got {leaf!r}")
+            cursor[int(leaf)] = value
+        else:
+            cursor[leaf] = value
     return out
 
 
@@ -80,4 +99,3 @@ def get_by_path(config: dict[str, Any], path: str, default: Any = None) -> Any:
             return default
         cursor = cursor[part]
     return cursor
-
