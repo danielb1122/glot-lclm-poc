@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import math
+import time
 from typing import Any
 
 import torch
@@ -84,6 +85,12 @@ def _log(metrics: dict[str, Any], step: int):
         wandb.log(metrics, step=step)
 
 
+def _sync_time() -> float:
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    return time.perf_counter()
+
+
 def _wandb_examples_table(examples: list[dict[str, Any]]):
     if wandb is None or wandb.run is None or not examples:
         return None
@@ -158,6 +165,9 @@ def main() -> None:
     eval_every = int(cfg["training"].get("eval_every_steps", 250))
     save_every = int(cfg["training"].get("save_every_steps", 500))
 
+    train_start = _sync_time()
+
+    eval_start = _sync_time()
     pretrained_metrics = evaluate_qa(
         model,
         eval_ds,
@@ -166,18 +176,22 @@ def main() -> None:
         max_examples=args.eval_max_examples,
         show_progress=False,
     )
+    pretrained_metrics["wall_time_s"] = _sync_time() - eval_start
     _log_eval_metrics("pretrained_full_context", pretrained_metrics, step=global_step)
 
     for stage in cfg["training"]["stages"]:
+        stage_name = stage["name"]
+        stage_start = _sync_time()
         set_trainability(model, **_stage_trainability(stage))
         trainable_params = _trainable_parameters(model)
         if not trainable_params:
-            raise ValueError(f"Stage has no trainable parameters: {stage['name']}")
+            raise ValueError(f"Stage has no trainable parameters: {stage_name}")
         optimizer = AdamW(trainable_params, lr=float(stage["lr"]))
         trainable, total = count_trainable_parameters(model)
         _log(
             {
                 "stage/index": cfg["training"]["stages"].index(stage),
+                "stage/name": stage_name,
                 "stage/trainable_params": trainable,
                 "stage/total_params": total,
             },
@@ -187,8 +201,9 @@ def main() -> None:
         model.train()
         iterator = itertools.cycle(train_loader)
         total_micro_steps = int(stage["steps"]) * grad_accum
-        pbar = tqdm(range(total_micro_steps), desc=f"train/{stage['name']}")
+        pbar = tqdm(range(total_micro_steps), desc=f"train/{stage_name}")
         optimizer.zero_grad(set_to_none=True)
+        step_start = _sync_time()
         for local_micro_step in pbar:
             batch = next(iterator)
             if stage.get("mode") == "full_context":
@@ -208,8 +223,17 @@ def main() -> None:
                 optimizer.step()
                 optimizer.zero_grad(set_to_none=True)
                 global_step += 1
+                now = _sync_time()
+                step_time_s = now - step_start
+                step_start = now
 
-                metrics = {"train/loss": float(loss.detach().cpu()) * grad_accum, "train/stage": stage["name"]}
+                metrics = {
+                    "train/loss": float(loss.detach().cpu()) * grad_accum,
+                    "train/stage": stage_name,
+                    "time/step_s": step_time_s,
+                    f"time/{stage_name}_step_s": step_time_s,
+                    "time/elapsed_s": now - train_start,
+                }
                 metrics.update({k: float(v.detach().cpu()) for k, v in out.metrics.items()})
                 if global_step % log_every == 0:
                     _log(metrics, step=global_step)
@@ -226,6 +250,7 @@ def main() -> None:
 
                 if global_step % eval_every == 0:
                     eval_mode = "compressed" if stage.get("mode") == "compressed" else "full_context"
+                    eval_start = _sync_time()
                     eval_metrics = evaluate_qa(
                         model,
                         eval_ds,
@@ -234,6 +259,8 @@ def main() -> None:
                         max_examples=args.eval_max_examples,
                         show_progress=False,
                     )
+                    eval_metrics["wall_time_s"] = _sync_time() - eval_start
+                    eval_metrics["stage"] = stage_name
                     scalar_log_metrics = _log_eval_metrics("eval", eval_metrics, step=global_step)
                     if eval_metrics["f1"] > best_f1:
                         best_f1 = float(eval_metrics["f1"])
@@ -247,7 +274,18 @@ def main() -> None:
                         )
                     model.train()
 
+        stage_time_s = _sync_time() - stage_start
+        _log(
+            {
+                f"time/stage_{stage_name}_s": stage_time_s,
+                "time/last_stage_s": stage_time_s,
+                "stage/completed": stage_name,
+            },
+            step=global_step,
+        )
+
         if stage.get("mode") == "full_context":
+            eval_start = _sync_time()
             warmup_metrics = evaluate_qa(
                 model,
                 eval_ds,
@@ -256,10 +294,12 @@ def main() -> None:
                 max_examples=args.eval_max_examples,
                 show_progress=False,
             )
+            warmup_metrics["wall_time_s"] = _sync_time() - eval_start
             _log_eval_metrics(f"after_{stage['name']}", warmup_metrics, step=global_step)
             model.train()
 
     final_mode = "compressed" if has_compressor else "full_context"
+    eval_start = _sync_time()
     final_metrics = evaluate_qa(
         model,
         eval_ds,
@@ -268,7 +308,9 @@ def main() -> None:
         max_examples=args.eval_max_examples,
         show_progress=True,
     )
+    final_metrics["wall_time_s"] = _sync_time() - eval_start
     _log_eval_metrics("final", final_metrics, step=global_step)
+    _log({"time/total_s": _sync_time() - train_start}, step=global_step)
     save_checkpoint(model, out_dir, name="last", config=cfg, step=global_step, metrics=final_metrics)
 
     if run is not None:
