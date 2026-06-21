@@ -63,6 +63,20 @@ wandb login
 pytest -q
 ```
 
+Cluster preflight before submitting SLURM:
+
+```bash
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+python scripts/check_cluster_env.py
+```
+
+Deeper check with a tiny model forward pass:
+
+```bash
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+python scripts/check_cluster_env.py --deep --device cuda
+```
+
 CPU end-to-end smoke run with tiny random local models:
 
 ```bash
