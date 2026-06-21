@@ -107,6 +107,20 @@ def _stage_trainability(stage: dict[str, Any]) -> dict[str, bool]:
     }
 
 
+def _log_eval_metrics(prefix: str, eval_metrics: dict[str, Any], step: int) -> dict[str, Any]:
+    scalar_log_metrics = {
+        f"{prefix}/{k}": v
+        for k, v in eval_metrics.items()
+        if k != "examples"
+    }
+    log_metrics = dict(scalar_log_metrics)
+    table = _wandb_examples_table(eval_metrics.get("examples", []))
+    if table is not None:
+        log_metrics[f"{prefix}/examples"] = table
+    _log(log_metrics, step=step)
+    return scalar_log_metrics
+
+
 def main() -> None:
     args = parse_args()
     cfg = apply_overrides(load_config(args.config), args.overrides)
@@ -143,6 +157,16 @@ def main() -> None:
     log_every = int(cfg["training"].get("log_every_steps", 10))
     eval_every = int(cfg["training"].get("eval_every_steps", 250))
     save_every = int(cfg["training"].get("save_every_steps", 500))
+
+    pretrained_metrics = evaluate_qa(
+        model,
+        eval_ds,
+        cfg,
+        mode="full_context",
+        max_examples=args.eval_max_examples,
+        show_progress=False,
+    )
+    _log_eval_metrics("pretrained_full_context", pretrained_metrics, step=global_step)
 
     for stage in cfg["training"]["stages"]:
         set_trainability(model, **_stage_trainability(stage))
@@ -210,16 +234,7 @@ def main() -> None:
                         max_examples=args.eval_max_examples,
                         show_progress=False,
                     )
-                    scalar_log_metrics = {
-                        f"eval/{k}": v
-                        for k, v in eval_metrics.items()
-                        if k != "examples"
-                    }
-                    log_metrics = dict(scalar_log_metrics)
-                    table = _wandb_examples_table(eval_metrics.get("examples", []))
-                    if table is not None:
-                        log_metrics["eval/examples"] = table
-                    _log(log_metrics, step=global_step)
+                    scalar_log_metrics = _log_eval_metrics("eval", eval_metrics, step=global_step)
                     if eval_metrics["f1"] > best_f1:
                         best_f1 = float(eval_metrics["f1"])
                         save_checkpoint(
@@ -232,6 +247,18 @@ def main() -> None:
                         )
                     model.train()
 
+        if stage.get("mode") == "full_context":
+            warmup_metrics = evaluate_qa(
+                model,
+                eval_ds,
+                cfg,
+                mode="full_context",
+                max_examples=args.eval_max_examples,
+                show_progress=False,
+            )
+            _log_eval_metrics(f"after_{stage['name']}", warmup_metrics, step=global_step)
+            model.train()
+
     final_mode = "compressed" if has_compressor else "full_context"
     final_metrics = evaluate_qa(
         model,
@@ -241,11 +268,7 @@ def main() -> None:
         max_examples=args.eval_max_examples,
         show_progress=True,
     )
-    final_log = {f"final/{k}": v for k, v in final_metrics.items() if k != "examples"}
-    table = _wandb_examples_table(final_metrics.get("examples", []))
-    if table is not None:
-        final_log["final/examples"] = table
-    _log(final_log, step=global_step)
+    _log_eval_metrics("final", final_metrics, step=global_step)
     save_checkpoint(model, out_dir, name="last", config=cfg, step=global_step, metrics=final_metrics)
 
     if run is not None:
