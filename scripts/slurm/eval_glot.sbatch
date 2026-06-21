@@ -32,7 +32,11 @@ else
   exit 1
 fi
 
-python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
+  echo "glot_lclm is not installed in this environment; installing editable package now." >&2
+  python -m pip install -e . --no-build-isolation
+  python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+fi
 
 CHECKPOINT="${CHECKPOINT:-outputs/glot_musique_qwen05/best.pt}"
 

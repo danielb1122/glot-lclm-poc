@@ -33,7 +33,11 @@ else
   exit 1
 fi
 
-python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
+  echo "glot_lclm is not installed in this environment; installing editable package now." >&2
+  python -m pip install -e . --no-build-isolation
+  python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+fi
 
 python -m glot_lclm.training.train \
   --config configs/mean_musique_qwen05.yaml \

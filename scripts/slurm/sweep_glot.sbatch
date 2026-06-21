@@ -33,7 +33,11 @@ else
   exit 1
 fi
 
-python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
+  echo "glot_lclm is not installed in this environment; installing editable package now." >&2
+  python -m pip install -e . --no-build-isolation
+  python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+fi
 
 RATIOS=(4 8)
 TOPKS=(2 4 7 8)
