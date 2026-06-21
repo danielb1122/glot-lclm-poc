@@ -21,6 +21,7 @@ mkdir -p logs
 export TOKENIZERS_PARALLELISM=false
 export WANDB_PROJECT="${WANDB_PROJECT:-glot-lclm-poc}"
 export HF_HOME="${HF_HOME:-$PWD/.hf_cache}"
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
 
 # Activate project environment. Prefer repo-local venv; fall back to conda env.
 if [ -f "$PWD/.venv/bin/activate" ]; then
@@ -35,7 +36,7 @@ fi
 
 if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
   echo "glot_lclm is not installed in this environment; installing editable package now." >&2
-  python -m pip install -e . --no-build-isolation
+  python -m pip install . --user --no-build-isolation
   python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
 fi
 
