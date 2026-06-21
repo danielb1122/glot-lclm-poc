@@ -22,6 +22,19 @@ export TOKENIZERS_PARALLELISM=false
 export WANDB_PROJECT="${WANDB_PROJECT:-glot-lclm-poc}"
 export HF_HOME="${HF_HOME:-$PWD/.hf_cache}"
 
+# Activate project environment. Prefer repo-local venv; fall back to conda env.
+if [ -f "$PWD/.venv/bin/activate" ]; then
+  source "$PWD/.venv/bin/activate"
+elif command -v conda >/dev/null 2>&1; then
+  source "$(conda info --base)/etc/profile.d/conda.sh"
+  conda activate glot-lclm
+else
+  echo "No .venv found and conda is unavailable. Run: bash scripts/setup_env.sh" >&2
+  exit 1
+fi
+
+python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
+
 python -m glot_lclm.training.train \
   --config configs/glot_musique_qwen05.yaml \
   --eval-max-examples "${EVAL_MAX_EXAMPLES:-50}"
