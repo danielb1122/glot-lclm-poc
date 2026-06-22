@@ -149,6 +149,7 @@ sbatch scripts/slurm/sweep_glot.sbatch
 ## Notes
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
+- Main configs follow the paper's encoder-window setup: `dataset.max_context_tokens` is total context length `T`, `compression.encoder_window_tokens` is encoder window size `W`, and `compression.ratio` is compression ratio `N`.
 - The graph is rebuilt from hidden-state cosine similarity at every forward pass.
 - The pooler is trained from the first compressed stage together with the adapter.
 - Main experiment configs use the paper-style LCLM adapter: `RMSNorm -> Linear(input_dim, decoder_dim) -> GELU -> Linear(decoder_dim, decoder_dim)`.

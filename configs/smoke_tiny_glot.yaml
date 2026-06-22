@@ -39,6 +39,7 @@ model:
 compression:
   pooler: glot
   ratio: 4
+  encoder_window_tokens: 16
   adapter: mlp
   adapter_hidden_multiplier: 1
   glot:

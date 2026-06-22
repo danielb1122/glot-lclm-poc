@@ -69,13 +69,51 @@ class CompressedQAModel(nn.Module):
     def device(self) -> torch.device:
         return next(self.parameters()).device
 
+    @property
+    def decoder_embedding_device(self) -> torch.device:
+        return self.decoder.get_input_embeddings().weight.device
+
+    def _encoder_window_tokens(self, max_context_tokens: int) -> int:
+        window_tokens = self.cfg.get("compression", {}).get("encoder_window_tokens")
+        if window_tokens is None or int(window_tokens) <= 0:
+            return max_context_tokens
+        return min(int(window_tokens), max_context_tokens)
+
     def encode_context(self, examples: list[QAExample]) -> tuple[torch.Tensor, torch.Tensor, dict]:
         contexts = [ex.context for ex in examples]
         max_context_tokens = int(self.cfg["dataset"]["max_context_tokens"])
-        batch = self.encoder_tokenizer(
+        window_tokens = self._encoder_window_tokens(max_context_tokens)
+        encoded = self.encoder_tokenizer(
             contexts,
             truncation=True,
             max_length=max_context_tokens,
+            padding=False,
+            return_attention_mask=True,
+        )
+
+        windows: list[dict[str, list[int]]] = []
+        owners: list[int] = []
+        for example_idx, input_ids in enumerate(encoded["input_ids"]):
+            attention_mask = encoded["attention_mask"][example_idx]
+            if not input_ids:
+                continue
+            for start in range(0, len(input_ids), window_tokens):
+                end = min(start + window_tokens, len(input_ids))
+                windows.append(
+                    {
+                        "input_ids": input_ids[start:end],
+                        "attention_mask": attention_mask[start:end],
+                    }
+                )
+                owners.append(example_idx)
+
+        if not windows:
+            pad_id = self.encoder_tokenizer.pad_token_id or 0
+            windows = [{"input_ids": [pad_id], "attention_mask": [0]}]
+            owners = [0]
+
+        batch = self.encoder_tokenizer.pad(
+            windows,
             padding=True,
             return_tensors="pt",
         ).to(self.device)
@@ -84,8 +122,44 @@ class CompressedQAModel(nn.Module):
         self.pooler.to(hidden.device)
         self.adapter.to(hidden.device)
         pooled = self.pooler(hidden, batch["attention_mask"])
-        adapted = self.adapter(pooled.latents)
-        return adapted, pooled.latent_mask.to(self.device), pooled.aux
+
+        per_example_latents: list[list[torch.Tensor]] = [[] for _ in examples]
+        per_example_masks: list[list[torch.Tensor]] = [[] for _ in examples]
+        for window_idx, example_idx in enumerate(owners):
+            per_example_latents[example_idx].append(pooled.latents[window_idx])
+            per_example_masks[example_idx].append(pooled.latent_mask[window_idx])
+
+        latent_sequences: list[torch.Tensor] = []
+        mask_sequences: list[torch.Tensor] = []
+        for example_idx in range(len(examples)):
+            if per_example_latents[example_idx]:
+                latent_sequences.append(torch.cat(per_example_latents[example_idx], dim=0))
+                mask_sequences.append(torch.cat(per_example_masks[example_idx], dim=0))
+            else:
+                latent_sequences.append(pooled.latents.new_zeros(1, pooled.latents.size(-1)))
+                mask_sequences.append(pooled.latent_mask.new_zeros(1))
+
+        max_latents = max(seq.size(0) for seq in latent_sequences)
+        latent_tensor = pooled.latents.new_zeros(len(examples), max_latents, pooled.latents.size(-1))
+        latent_mask = pooled.latent_mask.new_zeros(len(examples), max_latents)
+        for example_idx, seq in enumerate(latent_sequences):
+            length = seq.size(0)
+            latent_tensor[example_idx, :length] = seq
+            latent_mask[example_idx, :length] = mask_sequences[example_idx]
+
+        adapted = self.adapter(latent_tensor).to(self.decoder_embedding_device)
+        latent_mask = latent_mask.to(self.decoder_embedding_device)
+        aux = dict(pooled.aux)
+        aux["encoder_window_tokens"] = torch.tensor(
+            float(window_tokens),
+            device=hidden.device,
+        )
+        aux["encoder_windows_per_example"] = torch.tensor(
+            float(len(windows) / max(len(examples), 1)),
+            device=hidden.device,
+        )
+        aux["latent_tokens_per_example"] = latent_mask.float().sum(dim=1).mean().to(hidden.device)
+        return adapted, latent_mask, aux
 
     def _token_ids(self, text: str, add_special_tokens: bool = False) -> torch.Tensor:
         ids = self.decoder_tokenizer(

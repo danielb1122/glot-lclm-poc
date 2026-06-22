@@ -32,6 +32,7 @@ model:
 compression:
   pooler: mean
   ratio: 4
+  encoder_window_tokens: 1024
   adapter: paper_mlp
 
 lora:

@@ -27,6 +27,7 @@ Metrics:
 - TTFT
 - peak GPU memory
 - compression ratio
+- encoder window size `W`
 
 ## Runs
 
@@ -81,6 +82,7 @@ python -m glot_lclm.evaluation.evaluate_kvpress --config configs/kvpress_snapkv_
 ## Fairness Rules
 
 - Compare mean pooling and GLOT pooling with identical encoder, decoder, LoRA ranks, train examples, train steps, compression ratio, and evaluation split.
+- Keep `dataset.max_context_tokens` fixed when sweeping `compression.encoder_window_tokens`, so the run changes encoder granularity rather than total available context.
 - Report all runs, including failed or weak compression ratios.
 - Use the full-context run as a reference, not as a direct efficiency competitor.
 - Use truncation to show the task is not solved by simply dropping most context.
