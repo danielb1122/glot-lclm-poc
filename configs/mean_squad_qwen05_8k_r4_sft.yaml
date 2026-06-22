@@ -55,12 +55,12 @@ training:
   num_workers: 2
   max_grad_norm: 1.0
   save_every_steps: 500
-  eval_every_steps: 500
+  eval_every_steps: 1000
   log_every_steps: 10
   stages:
     - name: task_lora_warmup_full_context
       mode: full_context
-      steps: 300
+      steps: 500
       lr: 2.0e-4
       train_pooler: false
       train_adapter: false
@@ -68,15 +68,15 @@ training:
       train_decoder_lora: true
     - name: adapter_pooler_alignment
       mode: compressed
-      steps: 2500
+      steps: 6000
       lr: 2.0e-4
       train_pooler: false
       train_adapter: true
       train_encoder_lora: false
-      train_decoder_lora: false
+      train_decoder_lora: true
     - name: encoder_lora_alignment
       mode: compressed
-      steps: 800
+      steps: 0
       lr: 1.0e-4
       train_pooler: false
       train_adapter: true
@@ -84,7 +84,7 @@ training:
       train_decoder_lora: false
     - name: decoder_lora_task_tuning
       mode: compressed
-      steps: 1000
+      steps: 0
       lr: 5.0e-5
       train_pooler: false
       train_adapter: true
@@ -92,7 +92,7 @@ training:
       train_decoder_lora: true
     - name: sft_compressed_qa
       mode: compressed
-      steps: 1500
+      steps: 3000
       lr: 2.0e-5
       train_pooler: false
       train_adapter: true
