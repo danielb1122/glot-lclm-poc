@@ -30,8 +30,7 @@ elif command -v conda >/dev/null 2>&1; then
   source "$(conda info --base)/etc/profile.d/conda.sh"
   conda activate glot-lclm
 else
-  echo "No .venv found and conda is unavailable. Run: bash scripts/setup_env.sh" >&2
-  exit 1
+  echo "No .venv found and conda is unavailable; using current python: $(command -v python)" >&2
 fi
 
 if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
@@ -49,10 +48,10 @@ TOPK="${TOPKS[$(((IDX / ${#RATIOS[@]}) % ${#TOPKS[@]}))]}"
 GNN="${GNNS[$(((IDX / (${#RATIOS[@]} * ${#TOPKS[@]})) % ${#GNNS[@]}))]}"
 
 python -m glot_lclm.training.train \
-  --config configs/glot_musique_qwen05.yaml \
+  --config configs/glot_squad_qwen05_8k_r4_sft.yaml \
   compression.ratio="$RATIO" \
   compression.glot.topk="$TOPK" \
   compression.glot.gnn_type="$GNN" \
-  experiment.name="glot_musique_qwen05_${GNN}_r${RATIO}_k${TOPK}" \
-  experiment.output_dir="outputs/glot_musique_qwen05_${GNN}_r${RATIO}_k${TOPK}" \
+  experiment.name="glot_squad_qwen05_${GNN}_r${RATIO}_k${TOPK}" \
+  experiment.output_dir="outputs/glot_squad_qwen05_${GNN}_r${RATIO}_k${TOPK}" \
   --eval-max-examples "${EVAL_MAX_EXAMPLES:-50}"

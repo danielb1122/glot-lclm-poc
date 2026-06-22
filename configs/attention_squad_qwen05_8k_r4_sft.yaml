@@ -1,0 +1,106 @@
+experiment:
+  name: attention_squad_qwen05_8k_r4_sft
+  output_dir: outputs/attention_squad_qwen05_8k_r4_sft
+  seed: 42
+  wandb_project: glot-lclm-poc
+  wandb_entity: null
+  wandb_mode: online
+  tags: [squad, attention_pooling, lclm, qwen05, r4, sft]
+
+dataset:
+  name: rajpurkar/squad
+  config_name: null
+  train_split: train
+  eval_split: validation
+  local_data_files: null
+  train_limit: 10000
+  eval_limit: 1000
+  max_context_tokens: 8192
+  max_answer_tokens: 16
+  include_titles: true
+  evidence_auxiliary_weight: 0.0
+
+model:
+  encoder_name: Qwen/Qwen3-Embedding-0.6B
+  decoder_name: Qwen/Qwen2.5-0.5B-Instruct
+  share_tokenizer: true
+  load_in_4bit: true
+  dtype: bfloat16
+  gradient_checkpointing: true
+  trust_remote_code: true
+
+compression:
+  pooler: attention
+  ratio: 4
+  encoder_window_tokens: 1024
+  adapter: paper_mlp
+
+lora:
+  encoder:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj]
+  decoder:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj]
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  num_workers: 2
+  max_grad_norm: 1.0
+  save_every_steps: 500
+  eval_every_steps: 500
+  log_every_steps: 10
+  stages:
+    - name: task_lora_warmup_full_context
+      mode: full_context
+      steps: 300
+      lr: 2.0e-4
+      train_pooler: false
+      train_adapter: false
+      train_encoder_lora: false
+      train_decoder_lora: true
+    - name: adapter_pooler_alignment
+      mode: compressed
+      steps: 2500
+      lr: 2.0e-4
+      train_pooler: true
+      train_adapter: true
+      train_encoder_lora: false
+      train_decoder_lora: false
+    - name: encoder_lora_alignment
+      mode: compressed
+      steps: 800
+      lr: 1.0e-4
+      train_pooler: true
+      train_adapter: true
+      train_encoder_lora: true
+      train_decoder_lora: false
+    - name: decoder_lora_task_tuning
+      mode: compressed
+      steps: 1000
+      lr: 5.0e-5
+      train_pooler: true
+      train_adapter: true
+      train_encoder_lora: true
+      train_decoder_lora: true
+    - name: sft_compressed_qa
+      mode: compressed
+      steps: 1500
+      lr: 2.0e-5
+      train_pooler: true
+      train_adapter: true
+      train_encoder_lora: true
+      train_decoder_lora: true
+
+generation:
+  max_new_tokens: 8
+  do_sample: false
+  temperature: 0.0
+

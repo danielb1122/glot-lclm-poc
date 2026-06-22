@@ -29,8 +29,7 @@ elif command -v conda >/dev/null 2>&1; then
   source "$(conda info --base)/etc/profile.d/conda.sh"
   conda activate glot-lclm
 else
-  echo "No .venv found and conda is unavailable. Run: bash scripts/setup_env.sh" >&2
-  exit 1
+  echo "No .venv found and conda is unavailable; using current python: $(command -v python)" >&2
 fi
 
 if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
@@ -39,10 +38,9 @@ if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file
   python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"
 fi
 
-CHECKPOINT="${CHECKPOINT:-outputs/glot_musique_qwen05/best.pt}"
+CHECKPOINT="${CHECKPOINT:-outputs/glot_squad_qwen05_8k_r4_sft/best.pt}"
 
 python -m glot_lclm.evaluation.evaluate \
-  --config configs/glot_musique_qwen05.yaml \
+  --config configs/glot_squad_qwen05_8k_r4_sft.yaml \
   --checkpoint "$CHECKPOINT" \
   --split "${SPLIT:-validation}"
-

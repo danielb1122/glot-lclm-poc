@@ -157,7 +157,7 @@ def check_config_smoke() -> bool:
     try:
         from glot_lclm.utils.config import apply_overrides, load_config
 
-        cfg = load_config("configs/glot_musique_qwen05.yaml")
+        cfg = load_config("configs/glot_squad_qwen05_8k_r4_sft.yaml")
         cfg = apply_overrides(
             cfg,
             [
@@ -251,4 +251,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

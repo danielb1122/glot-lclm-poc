@@ -29,8 +29,7 @@ elif command -v conda >/dev/null 2>&1; then
   source "$(conda info --base)/etc/profile.d/conda.sh"
   conda activate glot-lclm
 else
-  echo "No .venv found and conda is unavailable. Run: bash scripts/setup_env.sh" >&2
-  exit 1
+  echo "No .venv found and conda is unavailable; using current python: $(command -v python)" >&2
 fi
 
 if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file__)"; then
@@ -40,6 +39,5 @@ if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file
 fi
 
 python -m glot_lclm.evaluation.evaluate_kvpress \
-  --config configs/kvpress_snapkv_qwen05.yaml \
+  --config configs/kvpress_snapkv_squad_qwen05.yaml \
   --split "${SPLIT:-validation}"
-

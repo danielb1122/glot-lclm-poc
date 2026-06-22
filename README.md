@@ -8,7 +8,7 @@ This repo adapts the LCLM flow from *End-to-End Context Compression at Scale* to
 context tokens -> encoder (+ optional LoRA) -> pooler -> adapter -> decoder LLM (+ optional LoRA) -> answer
 ```
 
-The default target task is MuSiQue answerable multi-hop QA. The default comparisons are:
+The default target task is SQuAD QA. The default comparisons are:
 
 - full-context decoder baseline
 - truncation baseline
@@ -92,29 +92,29 @@ This checks the data loader, encoder, graph pooler, adapter, decoder, loss, gene
 
 ```bash
 python -m glot_lclm.training.train \
-  --config configs/mean_musique_qwen05.yaml
+  --config configs/mean_squad_qwen05_8k_r4_sft.yaml
 ```
 
 ## Train GLOT Pooling
 
 ```bash
 python -m glot_lclm.training.train \
-  --config configs/glot_musique_qwen05.yaml
+  --config configs/glot_squad_qwen05_8k_r4_sft.yaml
 ```
 
 ## Train Learned Attention Pooling
 
 ```bash
 python -m glot_lclm.training.train \
-  --config configs/attention_musique_qwen05.yaml
+  --config configs/attention_squad_qwen05_8k_r4_sft.yaml
 ```
 
 ## Evaluate A Checkpoint
 
 ```bash
 python -m glot_lclm.evaluation.evaluate \
-  --config configs/glot_musique_qwen05.yaml \
-  --checkpoint outputs/glot_musique_qwen05/best.pt \
+  --config configs/glot_squad_qwen05_8k_r4_sft.yaml \
+  --checkpoint outputs/glot_squad_qwen05_8k_r4_sft/best.pt \
   --split validation
 ```
 
@@ -122,7 +122,7 @@ python -m glot_lclm.evaluation.evaluate \
 
 ```bash
 python -m glot_lclm.evaluation.evaluate_full_context \
-  --config configs/full_context_qwen05.yaml \
+  --config configs/full_context_squad_qwen05.yaml \
   --split validation
 ```
 
@@ -130,7 +130,7 @@ python -m glot_lclm.evaluation.evaluate_full_context \
 
 ```bash
 python -m glot_lclm.evaluation.evaluate_kvpress \
-  --config configs/kvpress_snapkv_qwen05.yaml \
+  --config configs/kvpress_snapkv_squad_qwen05.yaml \
   --split validation
 ```
 
@@ -138,12 +138,30 @@ KVPress is evaluated through its Hugging Face pipeline. The logged timing is mea
 
 ## SLURM
 
-Edit account/partition/module lines in `scripts/slurm/*.sbatch`, then:
+From `/home/bohadan/glot-lclm-poc` on the BGU cluster:
 
 ```bash
-sbatch scripts/slurm/train_mean.sbatch
-sbatch scripts/slurm/train_glot.sbatch
-sbatch scripts/slurm/sweep_glot.sbatch
+git pull
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+python scripts/check_cluster_env.py
+```
+
+Submit SQuAD jobs on RTX 6000:
+
+```bash
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_full_context.sbatch
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_mean.sbatch
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_glot.sbatch
+```
+
+The scripts default to SQuAD. The MuSiQue configs are still in `configs/` only as legacy options.
+
+Monitor:
+
+```bash
+squeue -u "$USER"
+tail -f "$(ls -t logs/*.out | head -1)"
+tail -n 120 "$(ls -t logs/*.err | head -1)"
 ```
 
 ## Notes

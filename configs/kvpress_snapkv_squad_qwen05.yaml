@@ -1,0 +1,39 @@
+experiment:
+  name: kvpress_snapkv_squad_qwen05
+  output_dir: outputs/kvpress_snapkv_squad_qwen05
+  seed: 42
+  wandb_project: glot-lclm-poc
+  wandb_entity: null
+  wandb_mode: online
+  tags: [squad, kvpress, snapkv, qwen05]
+
+dataset:
+  name: rajpurkar/squad
+  config_name: null
+  train_split: train
+  eval_split: validation
+  local_data_files: null
+  train_limit: 0
+  eval_limit: 1000
+  max_context_tokens: 8192
+  max_answer_tokens: 16
+  include_titles: true
+
+model:
+  decoder_name: Qwen/Qwen2.5-0.5B-Instruct
+  load_in_4bit: true
+  dtype: bfloat16
+  trust_remote_code: true
+
+kvpress:
+  press: SnapKVPress
+  compression_ratio: 0.875
+  # KVPress defines compression_ratio as fraction of KV entries removed.
+  # 0.875 roughly corresponds to keeping 1/8 tokens.
+  pipeline_task: kv-press-text-generation
+
+generation:
+  max_new_tokens: 8
+  do_sample: false
+  temperature: 0.0
+
