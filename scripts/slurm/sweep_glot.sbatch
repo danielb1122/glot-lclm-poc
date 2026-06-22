@@ -54,4 +54,4 @@ python -m glot_lclm.training.train \
   compression.glot.gnn_type="$GNN" \
   experiment.name="glot_squad_qwen05_${GNN}_r${RATIO}_k${TOPK}" \
   experiment.output_dir="outputs/glot_squad_qwen05_${GNN}_r${RATIO}_k${TOPK}" \
-  --eval-max-examples "${EVAL_MAX_EXAMPLES:-50}"
+  --eval-max-examples "${EVAL_MAX_EXAMPLES:-0}"

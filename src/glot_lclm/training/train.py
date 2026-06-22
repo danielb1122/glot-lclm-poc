@@ -33,7 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--eval-max-examples", type=int, default=50)
+    parser.add_argument("--eval-max-examples", type=int, default=0)
     args, unknown = parser.parse_known_args()
     cleaned = []
     for item in unknown:
@@ -130,6 +130,7 @@ def _log_eval_metrics(prefix: str, eval_metrics: dict[str, Any], step: int) -> d
 
 def main() -> None:
     args = parse_args()
+    eval_max_examples = None if args.eval_max_examples <= 0 else args.eval_max_examples
     cfg = apply_overrides(load_config(args.config), args.overrides)
     set_seed(int(cfg["experiment"].get("seed", 42)))
 
@@ -173,7 +174,7 @@ def main() -> None:
         eval_ds,
         cfg,
         mode="full_context",
-        max_examples=args.eval_max_examples,
+        max_examples=eval_max_examples,
         show_progress=False,
     )
     pretrained_metrics["wall_time_s"] = _sync_time() - eval_start
@@ -256,7 +257,7 @@ def main() -> None:
                         eval_ds,
                         cfg,
                         mode=eval_mode,
-                        max_examples=args.eval_max_examples,
+                        max_examples=eval_max_examples,
                         show_progress=False,
                     )
                     eval_metrics["wall_time_s"] = _sync_time() - eval_start
@@ -291,7 +292,7 @@ def main() -> None:
                 eval_ds,
                 cfg,
                 mode="full_context",
-                max_examples=args.eval_max_examples,
+                max_examples=eval_max_examples,
                 show_progress=False,
             )
             warmup_metrics["wall_time_s"] = _sync_time() - eval_start
@@ -305,7 +306,7 @@ def main() -> None:
         eval_ds,
         cfg,
         mode=final_mode,
-        max_examples=args.eval_max_examples,
+        max_examples=eval_max_examples,
         show_progress=True,
     )
     final_metrics["wall_time_s"] = _sync_time() - eval_start

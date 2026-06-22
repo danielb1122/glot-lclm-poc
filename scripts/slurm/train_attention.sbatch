@@ -40,4 +40,4 @@ fi
 
 python -m glot_lclm.training.train \
   --config configs/attention_squad_qwen05_8k_r4_sft.yaml \
-  --eval-max-examples "${EVAL_MAX_EXAMPLES:-50}"
+  --eval-max-examples "${EVAL_MAX_EXAMPLES:-0}"
