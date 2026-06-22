@@ -13,9 +13,9 @@ dataset:
   train_split: train
   eval_split: validation
   local_data_files: null
-  train_limit: 10000
-  eval_limit: 1000
-  max_context_tokens: 8192
+  train_limit: 0
+  eval_limit: 0
+  max_context_tokens: 4092
   max_answer_tokens: 16
   include_titles: true
   evidence_auxiliary_weight: 0.0
@@ -32,12 +32,12 @@ model:
 compression:
   pooler: attention
   ratio: 4
-  encoder_window_tokens: 1024
+  encoder_window_tokens: 512
   adapter: paper_mlp
 
 lora:
   encoder:
-    enabled: true
+    enabled: false
     r: 16
     alpha: 32
     dropout: 0.05
@@ -80,7 +80,7 @@ training:
       lr: 1.0e-4
       train_pooler: true
       train_adapter: true
-      train_encoder_lora: true
+      train_encoder_lora: false
       train_decoder_lora: false
     - name: decoder_lora_task_tuning
       mode: compressed
@@ -88,7 +88,7 @@ training:
       lr: 5.0e-5
       train_pooler: true
       train_adapter: true
-      train_encoder_lora: true
+      train_encoder_lora: false
       train_decoder_lora: true
     - name: sft_compressed_qa
       mode: compressed
@@ -96,11 +96,10 @@ training:
       lr: 2.0e-5
       train_pooler: true
       train_adapter: true
-      train_encoder_lora: true
+      train_encoder_lora: false
       train_decoder_lora: true
 
 generation:
   max_new_tokens: 8
   do_sample: false
   temperature: 0.0
-

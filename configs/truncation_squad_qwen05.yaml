@@ -14,8 +14,8 @@ dataset:
   eval_split: validation
   local_data_files: null
   train_limit: 0
-  eval_limit: 1000
-  max_context_tokens: 1024
+  eval_limit: 0
+  max_context_tokens: 4092
   max_answer_tokens: 16
   include_titles: true
 
@@ -36,4 +36,3 @@ generation:
   max_new_tokens: 8
   do_sample: false
   temperature: 0.0
-
