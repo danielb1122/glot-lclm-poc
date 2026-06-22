@@ -27,6 +27,26 @@ class MLPAdapter(nn.Module):
         return self.net(x)
 
 
+class PaperMLPAdapter(nn.Module):
+    """LCLM paper adapter: RMSNorm, Linear, GELU, Linear.
+
+    Hidden size is the decoder embedding size, so this maps
+    input_dim -> output_dim -> output_dim independently for each latent token.
+    """
+
+    def __init__(self, input_dim: int, output_dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.RMSNorm(input_dim),
+            nn.Linear(input_dim, output_dim),
+            nn.GELU(),
+            nn.Linear(output_dim, output_dim),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
 def build_adapter(input_dim: int, output_dim: int, cfg: dict) -> nn.Module:
     name = cfg.get("adapter", "mlp")
     if name == "linear":
@@ -37,5 +57,6 @@ def build_adapter(input_dim: int, output_dim: int, cfg: dict) -> nn.Module:
             output_dim=output_dim,
             hidden_multiplier=int(cfg.get("adapter_hidden_multiplier", 2)),
         )
+    if name in {"paper_mlp", "lclm_mlp"}:
+        return PaperMLPAdapter(input_dim=input_dim, output_dim=output_dim)
     raise ValueError(f"Unknown adapter: {name}")
-

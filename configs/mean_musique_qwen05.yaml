@@ -32,8 +32,7 @@ model:
 compression:
   pooler: mean
   ratio: 8
-  adapter: mlp
-  adapter_hidden_multiplier: 2
+  adapter: paper_mlp
 
 lora:
   encoder:

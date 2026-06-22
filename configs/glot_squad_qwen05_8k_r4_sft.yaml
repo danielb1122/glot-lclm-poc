@@ -32,8 +32,7 @@ model:
 compression:
   pooler: glot
   ratio: 4
-  adapter: mlp
-  adapter_hidden_multiplier: 4
+  adapter: paper_mlp
   glot:
     hidden_dim: 384
     num_layers: 2
