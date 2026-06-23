@@ -1,0 +1,78 @@
+experiment:
+  name: mean_lclm_squad_qwen4b_r16_decoder_lora
+  output_dir: outputs/mean_lclm_squad_qwen4b_r16_decoder_lora
+  seed: 42
+  wandb_project: glot-lclm-poc
+  wandb_entity: null
+  wandb_mode: online
+  tags: [squad, latent_context, mean, decoder_lora, qwen4b, r16]
+
+dataset:
+  name: rajpurkar/squad
+  config_name: null
+  train_split: train
+  eval_split: validation
+  local_data_files: null
+  train_limit: 0
+  eval_limit: 0
+  max_context_tokens: 4092
+  max_answer_tokens: 16
+  include_titles: true
+  prompt_style: lclm_memory
+  evidence_auxiliary_weight: 0.0
+
+model:
+  encoder_name: latent-context/0.6b-4b-LCLM-16x
+  encoder_subfolder: encoder
+  decoder_name: latent-context/0.6b-4b-LCLM-16x
+  decoder_subfolder: decoder
+  share_tokenizer: true
+  load_in_4bit: true
+  dtype: bfloat16
+  gradient_checkpointing: true
+  trust_remote_code: true
+
+compression:
+  pooler: mean
+  ratio: 16
+  encoder_window_tokens: 1024
+  adapter: lclm_mlp
+  adapter_checkpoint:
+    repo_id: latent-context/0.6b-4b-LCLM-16x
+    filename: adapter/adapter.safetensors
+    format: lclm
+    strict: true
+
+lora:
+  encoder:
+    enabled: false
+  decoder:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj]
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  num_workers: 2
+  max_grad_norm: 1.0
+  save_every_steps: 500
+  eval_every_steps: 500
+  log_every_steps: 10
+  stages:
+    - name: compressed_decoder_lora_only
+      mode: compressed
+      steps: 2500
+      lr: 1.0e-4
+      train_pooler: false
+      train_adapter: false
+      train_encoder_lora: false
+      train_decoder_lora: true
+
+generation:
+  max_new_tokens: 16
+  do_sample: false
+  temperature: 0.0
+

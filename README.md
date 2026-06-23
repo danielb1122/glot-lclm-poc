@@ -244,6 +244,22 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 ```
 
+For the focused 16x comparison, run mean pooling with only decoder LoRA:
+
+```bash
+CONFIG=configs/mean_lclm_squad_qwen4b_r16_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+Then run GLOT with pooler, adapter, and decoder LoRA:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_adapter_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
 ## Notes
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
