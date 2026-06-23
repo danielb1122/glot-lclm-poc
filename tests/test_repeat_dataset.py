@@ -51,3 +51,23 @@ def test_lclm_memory_repeat_prompt():
     assert compressed.prefix.endswith("<|memory_start|>")
     assert compressed.suffix.startswith("<|memory_end|>")
     assert "<|memory_start|>A first sentence.<|memory_end|>" in full.prefix
+
+
+def test_lclm_memory_qa_prompt():
+    example = row_to_qa_example(
+        {
+            "id": "qa-1",
+            "context": "Paris is in France.",
+            "question": "Where is Paris?",
+            "answers": {"text": ["France"]},
+        },
+        prompt_style="lclm_memory",
+    )
+
+    compressed = compressed_prompt_parts(example)
+    full = full_context_prompt_parts(example)
+
+    assert compressed.prefix.endswith("<|memory_start|>")
+    assert compressed.suffix.startswith("<|memory_end|>")
+    assert "Question: Where is Paris?" in compressed.suffix
+    assert "<|memory_start|>Paris is in France.<|memory_end|>" in full.prefix

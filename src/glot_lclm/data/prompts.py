@@ -34,6 +34,12 @@ def compressed_prompt_parts(example: QAExample) -> PromptParts:
         answer = "\n" + (example.answers[0] if example.answers else "")
         return PromptParts(prefix=prefix, suffix=suffix, answer=answer)
 
+    if example.prompt_style == "lclm_memory":
+        prefix = f"{SYSTEM_PROMPT}\n\n{MEMORY_START}"
+        suffix = f"{MEMORY_END}\n\nQuestion: {example.question}\nAnswer:"
+        answer = " " + (example.answers[0] if example.answers else "")
+        return PromptParts(prefix=prefix, suffix=suffix, answer=answer)
+
     prefix = f"{SYSTEM_PROMPT}\n\nCompressed context:\n"
     suffix = f"\n\nQuestion: {example.question}\nAnswer:"
     answer = " " + (example.answers[0] if example.answers else "")
@@ -53,6 +59,11 @@ def full_context_prompt_parts(example: QAExample, context: str | None = None) ->
             return PromptParts(prefix=prefix, suffix="", answer=answer)
         prefix = f"{REPEAT_SYSTEM_PROMPT}\n\nContext:\n{ctx}\n\n{example.question}Output:"
         answer = "\n" + (example.answers[0] if example.answers else "")
+        return PromptParts(prefix=prefix, suffix="", answer=answer)
+
+    if example.prompt_style == "lclm_memory":
+        prefix = f"{SYSTEM_PROMPT}\n\n{MEMORY_START}{ctx}{MEMORY_END}\n\nQuestion: {example.question}\nAnswer:"
+        answer = " " + (example.answers[0] if example.answers else "")
         return PromptParts(prefix=prefix, suffix="", answer=answer)
 
     prefix = f"{SYSTEM_PROMPT}\n\nContext:\n{ctx}\n\nQuestion: {example.question}\nAnswer:"

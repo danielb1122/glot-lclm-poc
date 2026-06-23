@@ -200,6 +200,50 @@ sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 
 The GLOT configs use `residual_mean: true` and `zero_init_output: true`, so the graph pooler starts as exact mean pooling and learns a residual correction.
 
+For SQuAD with the authors' 4x and 8x checkpoints, first run mean baselines:
+
+```bash
+CONFIG=configs/mean_lclm_squad_qwen4b_r4.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/mean_lclm_squad_qwen4b_r8.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+Then run GLOT 4x:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r4_pooler_only.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/glot_lclm_squad_r4_pooler_adapter.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/glot_lclm_squad_r4_pooler_adapter_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+And GLOT 8x:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r8_pooler_only.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/glot_lclm_squad_r8_pooler_adapter.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/glot_lclm_squad_r8_pooler_adapter_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
 ## Notes
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
