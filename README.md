@@ -200,6 +200,38 @@ sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 
 The GLOT configs use `residual_mean: true` and `zero_init_output: true`, so the graph pooler starts as exact mean pooling and learns a residual correction.
 
+Check repeat split overlap:
+
+```bash
+python scripts/check_repeat_split_overlap.py --levels level_5,level_20
+```
+
+The repeat configs use `train_split: train` and `eval_split: test`. The exact output strings do not overlap, but the underlying source sentence IDs overlap heavily between synthetic train and test.
+
+For level-20 repeat, run the released mean baseline:
+
+```bash
+CONFIG=configs/mean_lclm_repeat_level20_qwen4b_r4.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+Then run mean pooling with only decoder LoRA:
+
+```bash
+CONFIG=configs/mean_lclm_repeat_level20_qwen4b_r4_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+And compare with GLOT plus adapter plus decoder LoRA:
+
+```bash
+CONFIG=configs/glot_lclm_repeat_level20_pooler_adapter_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
 For SQuAD with the authors' 4x and 8x checkpoints, first run mean baselines:
 
 ```bash
