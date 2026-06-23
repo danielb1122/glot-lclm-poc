@@ -48,6 +48,10 @@ def _ensure_pad_token(tokenizer):
     tokenizer.padding_side = "right"
 
 
+def _subfolder_kwargs(subfolder: str | None) -> dict[str, str]:
+    return {"subfolder": subfolder} if subfolder else {}
+
+
 def load_encoder(name: str, cfg: dict) -> LoadedBackbone:
     if name == "tiny-random":
         tokenizer_name = cfg.get("tiny_tokenizer_name", "bert-base-uncased")
@@ -64,10 +68,16 @@ def load_encoder(name: str, cfg: dict) -> LoadedBackbone:
         model = BertModel(config)
         return LoadedBackbone(model=model, tokenizer=tokenizer, hidden_size=config.hidden_size)
 
-    tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=cfg.get("trust_remote_code", True))
+    subfolder = cfg.get("encoder_subfolder")
+    tokenizer = AutoTokenizer.from_pretrained(
+        name,
+        **_subfolder_kwargs(subfolder),
+        trust_remote_code=cfg.get("trust_remote_code", True),
+    )
     _ensure_pad_token(tokenizer)
     model = AutoModel.from_pretrained(
         name,
+        **_subfolder_kwargs(subfolder),
         trust_remote_code=cfg.get("trust_remote_code", True),
         torch_dtype=get_dtype(cfg.get("dtype")),
         quantization_config=_quantization_config(bool(cfg.get("load_in_4bit", False))),
@@ -97,10 +107,16 @@ def load_decoder(name: str, cfg: dict) -> LoadedBackbone:
         model = GPT2LMHeadModel(config)
         return LoadedBackbone(model=model, tokenizer=tokenizer, hidden_size=config.n_embd)
 
-    tokenizer = AutoTokenizer.from_pretrained(name, trust_remote_code=cfg.get("trust_remote_code", True))
+    subfolder = cfg.get("decoder_subfolder")
+    tokenizer = AutoTokenizer.from_pretrained(
+        name,
+        **_subfolder_kwargs(subfolder),
+        trust_remote_code=cfg.get("trust_remote_code", True),
+    )
     _ensure_pad_token(tokenizer)
     model = AutoModelForCausalLM.from_pretrained(
         name,
+        **_subfolder_kwargs(subfolder),
         trust_remote_code=cfg.get("trust_remote_code", True),
         torch_dtype=get_dtype(cfg.get("dtype")),
         quantization_config=_quantization_config(bool(cfg.get("load_in_4bit", False))),

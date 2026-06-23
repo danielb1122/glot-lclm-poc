@@ -210,6 +210,9 @@ class GLOTBlockPooler(nn.Module):
         dropout: float = 0.0,
         jk: str = "cat",
         gnn_type: str = "gat",
+        output_dim: int | None = None,
+        residual_mean: bool = False,
+        zero_init_output: bool = False,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -222,6 +225,7 @@ class GLOTBlockPooler(nn.Module):
         self.local_edges = local_edges
         self.jk = jk
         self.gnn_type = gnn_type
+        self.residual_mean = residual_mean
 
         layers = []
         in_dim = input_dim
@@ -236,18 +240,29 @@ class GLOTBlockPooler(nn.Module):
         self.layers = nn.ModuleList(layers)
 
         if jk == "cat":
-            self.out_dim = input_dim + num_layers * hidden_dim
+            readout_dim = input_dim + num_layers * hidden_dim
         elif jk == "last":
-            self.out_dim = hidden_dim
+            readout_dim = hidden_dim
         else:
             raise ValueError(f"Unknown jk mode: {jk}")
+        self.readout_dim = readout_dim
+        self.out_dim = int(output_dim) if output_dim is not None else readout_dim
+        if self.residual_mean and self.out_dim != self.input_dim:
+            raise ValueError("residual_mean requires output_dim to equal input_dim")
 
-        scorer_hidden = max(128, min(1024, self.out_dim // 2))
+        scorer_hidden = max(128, min(1024, self.readout_dim // 2))
         self.scorer = nn.Sequential(
-            nn.Linear(self.out_dim, scorer_hidden),
+            nn.Linear(self.readout_dim, scorer_hidden),
             nn.Tanh(),
             nn.Linear(scorer_hidden, 1),
         )
+        if self.out_dim == self.readout_dim:
+            self.output_proj = nn.Identity()
+        else:
+            self.output_proj = nn.Linear(self.readout_dim, self.out_dim)
+            if zero_init_output:
+                nn.init.zeros_(self.output_proj.weight)
+                nn.init.zeros_(self.output_proj.bias)
 
     def forward(self, hidden: torch.Tensor, attention_mask: torch.Tensor) -> PoolerOutput:
         block_hidden, block_mask = _pad_to_blocks(hidden, attention_mask, self.compression_ratio)
@@ -279,6 +294,12 @@ class GLOTBlockPooler(nn.Module):
         scores = scores.masked_fill(~flat_mask, torch.finfo(scores.dtype).min)
         weights = torch.softmax(scores, dim=-1).masked_fill(~flat_mask, 0.0)
         pooled = torch.sum(weights.unsqueeze(-1) * readout_hidden, dim=1)
+        pooled = self.output_proj(pooled)
+        if self.residual_mean:
+            mean_weights = flat_mask.to(flat_hidden.dtype).unsqueeze(-1)
+            denom = mean_weights.sum(dim=1).clamp_min(1.0)
+            mean_pooled = (flat_hidden * mean_weights).sum(dim=1) / denom
+            pooled = pooled + mean_pooled
         latents = pooled.view(bsz, n_blocks, self.out_dim)
 
         edge_density = adj.float().mean()
@@ -312,5 +333,8 @@ def build_pooler(input_dim: int, cfg: dict) -> nn.Module:
             dropout=float(glot_cfg.get("dropout", 0.0)),
             jk=str(glot_cfg.get("jk", "cat")),
             gnn_type=str(glot_cfg.get("gnn_type", "gat")),
+            output_dim=glot_cfg.get("output_dim"),
+            residual_mean=bool(glot_cfg.get("residual_mean", False)),
+            zero_init_output=bool(glot_cfg.get("zero_init_output", False)),
         )
     raise ValueError(f"Unknown pooler: {name}")

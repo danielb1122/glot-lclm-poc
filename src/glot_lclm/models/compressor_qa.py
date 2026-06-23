@@ -8,7 +8,7 @@ from torch import nn
 
 from glot_lclm.data.prompts import compressed_prompt_parts, full_context_prompt_parts
 from glot_lclm.data.qa_examples import QAExample
-from glot_lclm.models.adapter import build_adapter
+from glot_lclm.models.adapter import build_adapter, load_pretrained_adapter
 from glot_lclm.models.loaders import load_decoder, load_encoder, maybe_apply_lora
 from glot_lclm.models.poolers import build_pooler
 
@@ -64,6 +64,9 @@ class CompressedQAModel(nn.Module):
             output_dim=self.decoder_backbone.hidden_size,
             cfg=cfg["compression"],
         )
+        adapter_checkpoint = cfg["compression"].get("adapter_checkpoint")
+        if adapter_checkpoint:
+            load_pretrained_adapter(self.adapter, adapter_checkpoint)
 
     @property
     def device(self) -> torch.device:

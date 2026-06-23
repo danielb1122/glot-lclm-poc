@@ -1,0 +1,92 @@
+experiment:
+  name: glot_lclm_repeat_level5_pooler_adapter_decoder_lora
+  output_dir: outputs/glot_lclm_repeat_level5_pooler_adapter_decoder_lora
+  seed: 42
+  wandb_project: glot-lclm-poc
+  wandb_entity: null
+  wandb_mode: online
+  tags: [repeat, level5, latent_context, glot, pooler_adapter_decoder_lora, qwen4b, r4]
+
+dataset:
+  name: d4nieldev/glotcond-cola-repeat-levels
+  config_name: level_5
+  train_split: train
+  eval_split: test
+  local_data_files: null
+  train_limit: 0
+  eval_limit: 0
+  max_context_tokens: 2048
+  max_answer_tokens: 256
+  include_titles: false
+  prompt_style: lclm_memory
+  evidence_auxiliary_weight: 0.0
+
+model:
+  encoder_name: latent-context/0.6b-4b-LCLM-4x
+  encoder_subfolder: encoder
+  decoder_name: latent-context/0.6b-4b-LCLM-4x
+  decoder_subfolder: decoder
+  share_tokenizer: true
+  load_in_4bit: true
+  dtype: bfloat16
+  gradient_checkpointing: true
+  trust_remote_code: true
+
+compression:
+  pooler: glot
+  ratio: 4
+  encoder_window_tokens: 1024
+  adapter: lclm_mlp
+  adapter_checkpoint:
+    repo_id: latent-context/0.6b-4b-LCLM-4x
+    filename: adapter/adapter.safetensors
+    format: lclm
+    strict: true
+  glot:
+    hidden_dim: 384
+    output_dim: 1024
+    num_layers: 2
+    heads: 4
+    graph: topk
+    gnn_type: gat
+    topk: 4
+    tau: 0.25
+    local_edges: true
+    dropout: 0.05
+    jk: cat
+    residual_mean: true
+    zero_init_output: true
+
+lora:
+  encoder:
+    enabled: false
+  decoder:
+    enabled: true
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules: [q_proj, k_proj, v_proj, o_proj]
+
+training:
+  batch_size: 1
+  gradient_accumulation_steps: 8
+  num_workers: 2
+  max_grad_norm: 1.0
+  save_every_steps: 500
+  eval_every_steps: 250
+  log_every_steps: 10
+  stages:
+    - name: compressed_pooler_adapter_decoder_lora
+      mode: compressed
+      steps: 2000
+      lr: 1.0e-4
+      train_pooler: true
+      train_adapter: true
+      train_encoder_lora: false
+      train_decoder_lora: true
+
+generation:
+  max_new_tokens: 256
+  do_sample: false
+  temperature: 0.0
+

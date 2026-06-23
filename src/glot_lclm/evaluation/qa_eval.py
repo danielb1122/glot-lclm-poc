@@ -21,7 +21,10 @@ def evaluate_qa(
     show_progress: bool = True,
 ) -> dict[str, Any]:
     model.eval()
-    collator = QACollator(include_titles=bool(cfg["dataset"].get("include_titles", True)))
+    collator = QACollator(
+        include_titles=bool(cfg["dataset"].get("include_titles", True)),
+        prompt_style=str(cfg["dataset"].get("prompt_style", "default")),
+    )
     loader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=collator)
     max_new_tokens = int(cfg.get("generation", {}).get("max_new_tokens", 32))
 
@@ -64,4 +67,3 @@ def evaluate_qa(
     metrics["n_examples"] = count
     metrics["examples"] = examples_out
     return metrics
-

@@ -164,6 +164,42 @@ tail -f "$(ls -t logs/*.out | head -1)"
 tail -n 120 "$(ls -t logs/*.err | head -1)"
 ```
 
+## Latent-Context Repeat Experiments
+
+These use the authors' released checkpoint `latent-context/0.6b-4b-LCLM-4x`:
+
+- frozen encoder from `encoder/`
+- decoder from `decoder/`
+- pretrained adapter from `adapter/adapter.safetensors`
+- LCLM memory markers `<|memory_start|>` and `<|memory_end|>`
+- repeat-level synthetic dataset `d4nieldev/glotcond-cola-repeat-levels`, `level_5`
+
+Run the released mean-pooling checkpoint as a baseline:
+
+```bash
+CONFIG=configs/mean_lclm_repeat_level5_qwen4b_r4.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+Then run GLOT fine-tuning regimes:
+
+```bash
+CONFIG=configs/glot_lclm_repeat_level5_pooler_only.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/glot_lclm_repeat_level5_pooler_adapter.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/glot_lclm_repeat_level5_pooler_adapter_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+The GLOT configs use `residual_mean: true` and `zero_init_output: true`, so the graph pooler starts as exact mean pooling and learns a residual correction.
+
 ## Notes
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.

@@ -141,7 +141,10 @@ def main() -> None:
     train_ds = maybe_limit(_split_or_fallback(raw, cfg["dataset"]["train_split"]), cfg["dataset"].get("train_limit"))
     eval_ds = maybe_limit(_split_or_fallback(raw, cfg["dataset"]["eval_split"]), cfg["dataset"].get("eval_limit"))
 
-    collator = QACollator(include_titles=bool(cfg["dataset"].get("include_titles", True)))
+    collator = QACollator(
+        include_titles=bool(cfg["dataset"].get("include_titles", True)),
+        prompt_style=str(cfg["dataset"].get("prompt_style", "default")),
+    )
     train_loader = DataLoader(
         train_ds,
         batch_size=int(cfg["training"]["batch_size"]),
@@ -179,6 +182,18 @@ def main() -> None:
     )
     pretrained_metrics["wall_time_s"] = _sync_time() - eval_start
     _log_eval_metrics("pretrained_full_context", pretrained_metrics, step=global_step)
+    if has_compressor:
+        eval_start = _sync_time()
+        pretrained_compressed_metrics = evaluate_qa(
+            model,
+            eval_ds,
+            cfg,
+            mode="compressed",
+            max_examples=eval_max_examples,
+            show_progress=False,
+        )
+        pretrained_compressed_metrics["wall_time_s"] = _sync_time() - eval_start
+        _log_eval_metrics("pretrained_compressed", pretrained_compressed_metrics, step=global_step)
 
     for stage in cfg["training"]["stages"]:
         stage_name = stage["name"]

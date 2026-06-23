@@ -14,6 +14,7 @@ class QAExample:
     answers: list[str]
     support_indices: list[int]
     task_type: str = "qa"
+    prompt_style: str = "default"
 
 
 def _first_present(row: dict[str, Any], keys: list[str], default: Any = None) -> Any:
@@ -87,7 +88,11 @@ def _context_from_row(row: dict[str, Any], include_titles: bool) -> tuple[str, l
     return str(context), support_indices
 
 
-def row_to_qa_example(row: dict[str, Any], include_titles: bool = True) -> QAExample:
+def row_to_qa_example(
+    row: dict[str, Any],
+    include_titles: bool = True,
+    prompt_style: str = "default",
+) -> QAExample:
     if "sentences" in row and "expected_output" in row:
         sentences = row["sentences"]
         context = "\n".join(str(sentence) for sentence in sentences)
@@ -100,6 +105,7 @@ def row_to_qa_example(row: dict[str, Any], include_titles: bool = True) -> QAExa
             answers=[str(row["expected_output"])],
             support_indices=[],
             task_type="repeat",
+            prompt_style=prompt_style,
         )
 
     qid = str(_first_present(row, ["id", "qid", "_id"], ""))
@@ -115,6 +121,7 @@ def row_to_qa_example(row: dict[str, Any], include_titles: bool = True) -> QAExa
         answers=answers,
         support_indices=support_indices,
         task_type="qa",
+        prompt_style=prompt_style,
     )
 
 
@@ -136,11 +143,19 @@ def load_qa_dataset(cfg: dict[str, Any]) -> DatasetDict:
 
 
 class QACollator:
-    def __init__(self, include_titles: bool = True):
+    def __init__(self, include_titles: bool = True, prompt_style: str = "default"):
         self.include_titles = include_titles
+        self.prompt_style = prompt_style
 
     def __call__(self, rows: list[dict[str, Any]]) -> list[QAExample]:
-        return [row_to_qa_example(dict(row), include_titles=self.include_titles) for row in rows]
+        return [
+            row_to_qa_example(
+                dict(row),
+                include_titles=self.include_titles,
+                prompt_style=self.prompt_style,
+            )
+            for row in rows
+        ]
 
 
 def maybe_limit(dataset: Dataset, limit: int | None) -> Dataset:
