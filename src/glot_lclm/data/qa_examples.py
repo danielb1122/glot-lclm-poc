@@ -13,6 +13,7 @@ class QAExample:
     context: str
     answers: list[str]
     support_indices: list[int]
+    task_type: str = "qa"
 
 
 def _first_present(row: dict[str, Any], keys: list[str], default: Any = None) -> Any:
@@ -87,6 +88,20 @@ def _context_from_row(row: dict[str, Any], include_titles: bool) -> tuple[str, l
 
 
 def row_to_qa_example(row: dict[str, Any], include_titles: bool = True) -> QAExample:
+    if "sentences" in row and "expected_output" in row:
+        sentences = row["sentences"]
+        context = "\n".join(str(sentence) for sentence in sentences)
+        question = str(row.get("suffix") or "Repeat the above sentences:")
+        qid = f"repeat-{row.get('level', '')}-{row.get('synthetic_row_id', '')}"
+        return QAExample(
+            qid=qid,
+            question=question,
+            context=context,
+            answers=[str(row["expected_output"])],
+            support_indices=[],
+            task_type="repeat",
+        )
+
     qid = str(_first_present(row, ["id", "qid", "_id"], ""))
     question = str(_first_present(row, ["question", "query"], ""))
     context, support_indices = _context_from_row(row, include_titles)
@@ -99,6 +114,7 @@ def row_to_qa_example(row: dict[str, Any], include_titles: bool = True) -> QAExa
         context=context,
         answers=answers,
         support_indices=support_indices,
+        task_type="qa",
     )
 
 
@@ -131,4 +147,3 @@ def maybe_limit(dataset: Dataset, limit: int | None) -> Dataset:
     if limit is None or limit <= 0:
         return dataset
     return dataset.select(range(min(limit, len(dataset))))
-

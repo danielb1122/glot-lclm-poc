@@ -10,6 +10,8 @@ SYSTEM_PROMPT = (
     "Return the shortest answer span or phrase."
 )
 
+REPEAT_SYSTEM_PROMPT = "Repeat the provided context exactly."
+
 
 @dataclass
 class PromptParts:
@@ -19,6 +21,12 @@ class PromptParts:
 
 
 def compressed_prompt_parts(example: QAExample) -> PromptParts:
+    if example.task_type == "repeat":
+        prefix = f"{REPEAT_SYSTEM_PROMPT}\n\nCompressed context:\n"
+        suffix = f"\n\n{example.question}Output:"
+        answer = "\n" + (example.answers[0] if example.answers else "")
+        return PromptParts(prefix=prefix, suffix=suffix, answer=answer)
+
     prefix = f"{SYSTEM_PROMPT}\n\nCompressed context:\n"
     suffix = f"\n\nQuestion: {example.question}\nAnswer:"
     answer = " " + (example.answers[0] if example.answers else "")
@@ -27,6 +35,11 @@ def compressed_prompt_parts(example: QAExample) -> PromptParts:
 
 def full_context_prompt_parts(example: QAExample, context: str | None = None) -> PromptParts:
     ctx = example.context if context is None else context
+    if example.task_type == "repeat":
+        prefix = f"{REPEAT_SYSTEM_PROMPT}\n\nContext:\n{ctx}\n\n{example.question}Output:"
+        answer = "\n" + (example.answers[0] if example.answers else "")
+        return PromptParts(prefix=prefix, suffix="", answer=answer)
+
     prefix = f"{SYSTEM_PROMPT}\n\nContext:\n{ctx}\n\nQuestion: {example.question}\nAnswer:"
     answer = " " + (example.answers[0] if example.answers else "")
     return PromptParts(prefix=prefix, suffix="", answer=answer)
@@ -34,4 +47,3 @@ def full_context_prompt_parts(example: QAExample, context: str | None = None) ->
 
 def full_context_generation_prompt(example: QAExample, context: str | None = None) -> str:
     return full_context_prompt_parts(example, context=context).prefix
-
