@@ -62,3 +62,26 @@ def test_glot_residual_mean_starts_as_mean():
     out = pooler(hidden, mask)
     assert out.latents.shape == (1, 2, 12)
     assert torch.allclose(out.latents, mean, atol=1e-6)
+
+
+def test_glot_pooler_bfloat16_forward():
+    hidden = torch.randn(1, 8, 12, dtype=torch.bfloat16)
+    mask = torch.ones(1, 8, dtype=torch.long)
+    pooler = GLOTBlockPooler(
+        input_dim=12,
+        compression_ratio=4,
+        hidden_dim=16,
+        output_dim=12,
+        num_layers=1,
+        heads=4,
+        graph="topk",
+        topk=2,
+        jk="cat",
+        residual_mean=True,
+        zero_init_output=True,
+    ).to(dtype=torch.bfloat16)
+
+    out = pooler(hidden, mask)
+
+    assert out.latents.dtype == torch.bfloat16
+    assert out.latents.shape == (1, 2, 12)

@@ -122,8 +122,8 @@ class CompressedQAModel(nn.Module):
         ).to(self.device)
         outputs = self.encoder(**batch, output_hidden_states=True, return_dict=True)
         hidden = _last_hidden(outputs)
-        self.pooler.to(hidden.device)
-        self.adapter.to(hidden.device)
+        self.pooler.to(device=hidden.device, dtype=hidden.dtype)
+        self.adapter.to(device=hidden.device, dtype=hidden.dtype)
         pooled = self.pooler(hidden, batch["attention_mask"])
 
         per_example_latents: list[list[torch.Tensor]] = [[] for _ in examples]
