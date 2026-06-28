@@ -50,7 +50,7 @@ compression:
     graph: threshold
     gnn_type: gat
     topk: 4
-    tau: 0.3
+    tau: 0.6
     local_edges: false
     dropout: 0.05
     jk: cat

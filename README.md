@@ -324,6 +324,14 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_decoder_lora_lr.sbatch
 ```
 
+Sweep the GLOT threshold `tau`. By default this launches four jobs with `tau` values `0.3`, `0.5`, `0.6`, and `0.8`:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_decoder_lora_tau.sbatch
+```
+
 To sweep a smaller set:
 
 ```bash
@@ -337,7 +345,7 @@ sbatch --array=0-2 -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glo
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
 - Main configs follow the paper's encoder-window setup: `dataset.max_context_tokens` is total context length `T`, `compression.encoder_window_tokens` is encoder window size `W`, and `compression.ratio` is compression ratio `N`.
-- The 16x GLOT configs use a GLOT-style threshold graph: edges are rebuilt from hidden-state cosine similarity inside each compression block.
+- The 16x GLOT configs use a GLOT-style threshold graph: edges are rebuilt from hidden-state cosine similarity inside each compression block. The default threshold is `tau: 0.6`.
 - The stage flags choose what is trainable: pooler only, pooler plus decoder LoRA, or pooler plus adapter plus decoder LoRA.
 - In `*_pooler_only` configs, only the pooler is trainable; the pretrained adapter and decoder are frozen.
 - In `*_pooler_decoder_lora` configs, the pooler and decoder LoRA are trainable; the pretrained adapter is frozen.
