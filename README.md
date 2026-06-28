@@ -292,6 +292,14 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 ```
 
+Run the fairer comparison against mean pooling plus decoder LoRA. This freezes the encoder and adapter, trains GLOT from mean initialization, and trains decoder LoRA:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
 Then run GLOT with pooler, adapter, and decoder LoRA:
 
 ```bash
@@ -308,6 +316,14 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_only_lr.sbatch
 ```
 
+Sweep the GLOT plus decoder-LoRA learning rate. By default this launches five jobs with learning rates `2e-5`, `5e-5`, `1e-4`, `2e-4`, and `5e-4`:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_decoder_lora_lr.sbatch
+```
+
 To sweep a smaller set:
 
 ```bash
@@ -322,8 +338,9 @@ sbatch --array=0-2 -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glo
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
 - Main configs follow the paper's encoder-window setup: `dataset.max_context_tokens` is total context length `T`, `compression.encoder_window_tokens` is encoder window size `W`, and `compression.ratio` is compression ratio `N`.
 - The graph is rebuilt from hidden-state cosine similarity at every forward pass.
-- The pooler is trained from the first compressed stage together with the adapter.
+- The stage flags choose what is trainable: pooler only, pooler plus decoder LoRA, or pooler plus adapter plus decoder LoRA.
 - In `*_pooler_only` configs, only the pooler is trainable; the pretrained adapter and decoder are frozen.
+- In `*_pooler_decoder_lora` configs, the pooler and decoder LoRA are trainable; the pretrained adapter is frozen.
 - `residual_mean: true` plus `zero_init_output: true` makes GLOT start exactly as mean pooling, then learn only a residual correction.
 - Main experiment configs use the paper-style LCLM adapter: `RMSNorm -> Linear(input_dim, decoder_dim) -> GELU -> Linear(decoder_dim, decoder_dim)`.
 - The default config is intentionally small for 24GB GPUs. Increase max context, batch size, LoRA rank, or decoder size only after the smoke runs are stable.
