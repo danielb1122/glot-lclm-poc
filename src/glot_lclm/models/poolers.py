@@ -100,7 +100,7 @@ def _dense_graph_mask(
     sim = sim.masked_fill(~valid_pair, -1e4)
 
     if graph == "threshold":
-        adj = sim >= tau
+        adj = sim > tau
     elif graph == "topk":
         k = max(1, min(topk, block_size))
         top_idx = sim.topk(k=k, dim=-1).indices
@@ -159,10 +159,64 @@ class DenseGraphAttentionLayer(nn.Module):
         return out * node_mask.unsqueeze(-1).to(out.dtype)
 
 
+class DenseRepoGraphAttentionLayer(nn.Module):
+    """Dense block-local approximation of PyG's GATConv used by GLOT.
+
+    The public GLOT implementation uses torch_geometric.nn.GATConv followed by
+    ReLU in the pooler. This layer keeps the same attention form without adding
+    torch-geometric as a dependency for 16-token compression blocks.
+    """
+
+    def __init__(self, in_dim: int, out_dim: int, heads: int = 1, dropout: float = 0.0):
+        super().__init__()
+        if out_dim % heads != 0:
+            raise ValueError("out_dim must be divisible by heads")
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.heads = heads
+        self.head_dim = out_dim // heads
+        self.lin = nn.Linear(in_dim, out_dim, bias=False)
+        self.att_src = nn.Parameter(torch.empty(heads, self.head_dim))
+        self.att_dst = nn.Parameter(torch.empty(heads, self.head_dim))
+        self.bias = nn.Parameter(torch.zeros(out_dim))
+        self.dropout = nn.Dropout(dropout)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.xavier_uniform_(self.lin.weight)
+        nn.init.xavier_uniform_(self.att_src)
+        nn.init.xavier_uniform_(self.att_dst)
+        nn.init.zeros_(self.bias)
+
+    def forward(self, x: torch.Tensor, adj: torch.Tensor, node_mask: torch.Tensor) -> torch.Tensor:
+        bsn, block_size, _ = x.shape
+        h = self.lin(x).view(bsn, block_size, self.heads, self.head_dim)
+        src_scores = (h * self.att_src.view(1, 1, self.heads, self.head_dim)).sum(dim=-1)
+        dst_scores = (h * self.att_dst.view(1, 1, self.heads, self.head_dim)).sum(dim=-1)
+        scores = dst_scores.unsqueeze(2) + src_scores.unsqueeze(1)
+        scores = F.leaky_relu(scores, negative_slope=0.2).permute(0, 3, 1, 2)
+        scores = scores.masked_fill(~adj.unsqueeze(1), torch.finfo(scores.dtype).min)
+        attn = torch.softmax(scores, dim=-1)
+        attn = attn.masked_fill(~adj.unsqueeze(1), 0.0)
+        attn = self.dropout(attn)
+        h_src = h.permute(0, 2, 1, 3)
+        out = torch.matmul(attn, h_src).transpose(1, 2).contiguous().view(bsn, block_size, self.out_dim)
+        out = out + self.bias
+        return out * node_mask.unsqueeze(-1).to(out.dtype)
+
+
 class DenseGraphConvLayer(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int, kind: str = "gcn", dropout: float = 0.0):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        kind: str = "gcn",
+        dropout: float = 0.0,
+        repo_style: bool = False,
+    ):
         super().__init__()
         self.kind = kind
+        self.repo_style = repo_style
         if kind == "gcn":
             self.update = nn.Linear(in_dim, out_dim)
             residual_in = in_dim
@@ -183,6 +237,8 @@ class DenseGraphConvLayer(nn.Module):
             msg = self.update(neigh)
         else:
             msg = self.update(torch.cat([x, neigh], dim=-1))
+        if self.repo_style:
+            return self.dropout(msg) * node_mask.unsqueeze(-1).to(msg.dtype)
         out = self.norm(self.residual(x) + self.dropout(msg))
         out = F.gelu(out)
         return out * node_mask.unsqueeze(-1).to(out.dtype)
@@ -214,6 +270,7 @@ class GLOTBlockPooler(nn.Module):
         residual_mean: bool = False,
         zero_init_output: bool = False,
         init_as_mean: bool = False,
+        layer_style: str = "stable",
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -228,14 +285,28 @@ class GLOTBlockPooler(nn.Module):
         self.gnn_type = gnn_type
         self.residual_mean = residual_mean
         self.init_as_mean = init_as_mean
+        self.layer_style = layer_style
+        if self.layer_style not in {"stable", "repo"}:
+            raise ValueError("layer_style must be 'stable' or 'repo'")
 
         layers = []
         in_dim = input_dim
         for _ in range(num_layers):
             if gnn_type == "gat":
-                layers.append(DenseGraphAttentionLayer(in_dim, hidden_dim, heads=heads, dropout=dropout))
+                if self.layer_style == "repo":
+                    layers.append(DenseRepoGraphAttentionLayer(in_dim, hidden_dim, heads=heads, dropout=dropout))
+                else:
+                    layers.append(DenseGraphAttentionLayer(in_dim, hidden_dim, heads=heads, dropout=dropout))
             elif gnn_type in {"gcn", "sage"}:
-                layers.append(DenseGraphConvLayer(in_dim, hidden_dim, kind=gnn_type, dropout=dropout))
+                layers.append(
+                    DenseGraphConvLayer(
+                        in_dim,
+                        hidden_dim,
+                        kind=gnn_type,
+                        dropout=dropout,
+                        repo_style=self.layer_style == "repo",
+                    )
+                )
             else:
                 raise ValueError(f"Unknown gnn_type: {gnn_type}")
             in_dim = hidden_dim
@@ -304,6 +375,8 @@ class GLOTBlockPooler(nn.Module):
         h_list = [h]
         for layer in self.layers:
             h = layer(h, adj=adj, node_mask=flat_mask)
+            if self.layer_style == "repo":
+                h = F.relu(h)
             h_list.append(h)
 
         if self.jk == "cat":
@@ -358,5 +431,6 @@ def build_pooler(input_dim: int, cfg: dict) -> nn.Module:
             residual_mean=bool(glot_cfg.get("residual_mean", False)),
             zero_init_output=bool(glot_cfg.get("zero_init_output", False)),
             init_as_mean=bool(glot_cfg.get("init_as_mean", False)),
+            layer_style=str(glot_cfg.get("layer_style", "stable")),
         )
     raise ValueError(f"Unknown pooler: {name}")

@@ -1,6 +1,11 @@
 import torch
 
-from glot_lclm.models.poolers import AttentionBlockPooler, GLOTBlockPooler, MeanBlockPooler
+from glot_lclm.models.poolers import (
+    AttentionBlockPooler,
+    DenseRepoGraphAttentionLayer,
+    GLOTBlockPooler,
+    MeanBlockPooler,
+)
 
 
 def test_mean_pooler_shapes():
@@ -81,12 +86,33 @@ def test_glot_weight_initialization_expresses_mean_pooling():
         residual_mean=False,
         zero_init_output=False,
         init_as_mean=True,
+        layer_style="repo",
     )
 
     out = pooler(hidden, mask)
 
     assert out.latents.shape == (1, 2, 12)
     assert torch.allclose(out.latents, mean, atol=1e-6)
+
+
+def test_glot_repo_style_uses_repo_like_gat_layer():
+    pooler = GLOTBlockPooler(
+        input_dim=12,
+        compression_ratio=4,
+        hidden_dim=16,
+        output_dim=12,
+        num_layers=1,
+        heads=1,
+        graph="threshold",
+        tau=0.6,
+        jk="cat",
+        init_as_mean=True,
+        layer_style="repo",
+    )
+
+    assert isinstance(pooler.layers[0], DenseRepoGraphAttentionLayer)
+    assert not hasattr(pooler.layers[0], "norm")
+    assert not hasattr(pooler.layers[0], "residual")
 
 
 def test_glot_pooler_bfloat16_forward():
@@ -103,6 +129,7 @@ def test_glot_pooler_bfloat16_forward():
         topk=2,
         jk="cat",
         init_as_mean=True,
+        layer_style="repo",
     ).to(dtype=torch.bfloat16)
 
     out = pooler(hidden, mask)

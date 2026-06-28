@@ -46,9 +46,10 @@ compression:
     hidden_dim: 384
     output_dim: 1024
     num_layers: 2
-    heads: 4
+    heads: 1
     graph: threshold
     gnn_type: gat
+    layer_style: repo
     topk: 4
     tau: 0.6
     local_edges: false
