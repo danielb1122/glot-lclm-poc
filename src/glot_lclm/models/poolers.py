@@ -213,6 +213,7 @@ class GLOTBlockPooler(nn.Module):
         output_dim: int | None = None,
         residual_mean: bool = False,
         zero_init_output: bool = False,
+        init_as_mean: bool = False,
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -226,6 +227,7 @@ class GLOTBlockPooler(nn.Module):
         self.jk = jk
         self.gnn_type = gnn_type
         self.residual_mean = residual_mean
+        self.init_as_mean = init_as_mean
 
         layers = []
         in_dim = input_dim
@@ -249,6 +251,8 @@ class GLOTBlockPooler(nn.Module):
         self.out_dim = int(output_dim) if output_dim is not None else readout_dim
         if self.residual_mean and self.out_dim != self.input_dim:
             raise ValueError("residual_mean requires output_dim to equal input_dim")
+        if self.init_as_mean and (self.jk != "cat" or self.out_dim != self.input_dim):
+            raise ValueError("init_as_mean requires jk='cat' and output_dim equal to input_dim")
 
         scorer_hidden = max(128, min(1024, self.readout_dim // 2))
         self.scorer = nn.Sequential(
@@ -263,6 +267,23 @@ class GLOTBlockPooler(nn.Module):
             if zero_init_output:
                 nn.init.zeros_(self.output_proj.weight)
                 nn.init.zeros_(self.output_proj.bias)
+        if self.init_as_mean:
+            self._init_as_mean_pooler()
+
+    def _init_as_mean_pooler(self) -> None:
+        if not isinstance(self.output_proj, nn.Linear):
+            raise ValueError("init_as_mean requires a linear output projection")
+        with torch.no_grad():
+            nn.init.zeros_(self.scorer[-1].weight)
+            nn.init.zeros_(self.scorer[-1].bias)
+            nn.init.zeros_(self.output_proj.weight)
+            nn.init.zeros_(self.output_proj.bias)
+            eye = torch.eye(
+                self.input_dim,
+                dtype=self.output_proj.weight.dtype,
+                device=self.output_proj.weight.device,
+            )
+            self.output_proj.weight[:, : self.input_dim].copy_(eye)
 
     def forward(self, hidden: torch.Tensor, attention_mask: torch.Tensor) -> PoolerOutput:
         block_hidden, block_mask = _pad_to_blocks(hidden, attention_mask, self.compression_ratio)
@@ -336,5 +357,6 @@ def build_pooler(input_dim: int, cfg: dict) -> nn.Module:
             output_dim=glot_cfg.get("output_dim"),
             residual_mean=bool(glot_cfg.get("residual_mean", False)),
             zero_init_output=bool(glot_cfg.get("zero_init_output", False)),
+            init_as_mean=bool(glot_cfg.get("init_as_mean", False)),
         )
     raise ValueError(f"Unknown pooler: {name}")

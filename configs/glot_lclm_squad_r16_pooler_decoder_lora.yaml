@@ -54,8 +54,9 @@ compression:
     local_edges: false
     dropout: 0.05
     jk: cat
-    residual_mean: true
-    zero_init_output: true
+    residual_mean: false
+    zero_init_output: false
+    init_as_mean: true
 
 lora:
   encoder:

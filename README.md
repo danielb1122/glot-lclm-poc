@@ -198,7 +198,7 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 ```
 
-The GLOT configs use `residual_mean: true` and `zero_init_output: true`, so the graph pooler starts as exact mean pooling and learns a residual correction.
+The 16x GLOT configs use `init_as_mean: true`, so the graph pooler weights start as exact mean pooling.
 
 Check repeat split overlap:
 
@@ -349,6 +349,6 @@ sbatch --array=0-2 -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glo
 - The stage flags choose what is trainable: pooler only, pooler plus decoder LoRA, or pooler plus adapter plus decoder LoRA.
 - In `*_pooler_only` configs, only the pooler is trainable; the pretrained adapter and decoder are frozen.
 - In `*_pooler_decoder_lora` configs, the pooler and decoder LoRA are trainable; the pretrained adapter is frozen.
-- `residual_mean: true` plus `zero_init_output: true` makes GLOT start exactly as mean pooling, then learn only a residual correction.
+- `init_as_mean: true` initializes GLOT itself as mean pooling: the readout scores start uniform and the output projection selects the original token features from the Jumping-Knowledge representation.
 - Main experiment configs use the paper-style LCLM adapter: `RMSNorm -> Linear(input_dim, decoder_dim) -> GELU -> Linear(decoder_dim, decoder_dim)`.
 - The default config is intentionally small for 24GB GPUs. Increase max context, batch size, LoRA rank, or decoder size only after the smoke runs are stable.
