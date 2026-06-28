@@ -396,6 +396,7 @@ class PyGGLOTBlockPooler(nn.Module):
                 token_idx = torch.zeros(1, dtype=torch.long, device=device)
             sim = F.cosine_similarity(x_b.unsqueeze(1), x_b.unsqueeze(0), dim=-1)
             edge_index, edge_weight = self._threshold_edges(sim)
+            edge_weight = edge_weight.to(dtype=x_b.dtype).unsqueeze(-1)
             data = self.Data(x=x_b, edge_index=edge_index, edge_attr=edge_weight).to(device)
             data.token_idx = token_idx
             graphs.append(data)
