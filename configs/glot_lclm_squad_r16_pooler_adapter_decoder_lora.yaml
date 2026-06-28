@@ -47,11 +47,11 @@ compression:
     output_dim: 1024
     num_layers: 2
     heads: 4
-    graph: topk
+    graph: threshold
     gnn_type: gat
     topk: 4
-    tau: 0.25
-    local_edges: true
+    tau: 0.3
+    local_edges: false
     dropout: 0.05
     jk: cat
     residual_mean: true
@@ -89,4 +89,3 @@ generation:
   max_new_tokens: 16
   do_sample: false
   temperature: 0.0
-

@@ -337,7 +337,7 @@ sbatch --array=0-2 -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glo
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
 - Main configs follow the paper's encoder-window setup: `dataset.max_context_tokens` is total context length `T`, `compression.encoder_window_tokens` is encoder window size `W`, and `compression.ratio` is compression ratio `N`.
-- The graph is rebuilt from hidden-state cosine similarity at every forward pass.
+- The 16x GLOT configs use a GLOT-style threshold graph: edges are rebuilt from hidden-state cosine similarity inside each compression block.
 - The stage flags choose what is trainable: pooler only, pooler plus decoder LoRA, or pooler plus adapter plus decoder LoRA.
 - In `*_pooler_only` configs, only the pooler is trainable; the pretrained adapter and decoder are frozen.
 - In `*_pooler_decoder_lora` configs, the pooler and decoder LoRA are trainable; the pretrained adapter is frozen.
