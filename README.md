@@ -284,6 +284,14 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 ```
 
+Run the clean GLOT-pooler ablation with mean-pooling initialization. This freezes the encoder, adapter, and decoder, and trains only the GLOT pooler:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_only.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
 Then run GLOT with pooler, adapter, and decoder LoRA:
 
 ```bash
@@ -292,11 +300,30 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 ```
 
+Sweep the pooler-only learning rate. By default this launches five jobs with learning rates `5e-5`, `1e-4`, `2e-4`, `5e-4`, and `1e-3`:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_only.yaml \
+EVAL_MAX_EXAMPLES=200 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_only_lr.sbatch
+```
+
+To sweep a smaller set:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_only.yaml \
+LRS="1e-4 2e-4 5e-4" \
+EVAL_MAX_EXAMPLES=200 \
+sbatch --array=0-2 -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_only_lr.sbatch
+```
+
 ## Notes
 
 - The GLOT implementation here is block-local. A compression ratio of 8 means each block of 8 encoder token states becomes one latent token.
 - Main configs follow the paper's encoder-window setup: `dataset.max_context_tokens` is total context length `T`, `compression.encoder_window_tokens` is encoder window size `W`, and `compression.ratio` is compression ratio `N`.
 - The graph is rebuilt from hidden-state cosine similarity at every forward pass.
 - The pooler is trained from the first compressed stage together with the adapter.
+- In `*_pooler_only` configs, only the pooler is trainable; the pretrained adapter and decoder are frozen.
+- `residual_mean: true` plus `zero_init_output: true` makes GLOT start exactly as mean pooling, then learn only a residual correction.
 - Main experiment configs use the paper-style LCLM adapter: `RMSNorm -> Linear(input_dim, decoder_dim) -> GELU -> Linear(decoder_dim, decoder_dim)`.
 - The default config is intentionally small for 24GB GPUs. Increase max context, batch size, LoRA rank, or decoder size only after the smoke runs are stable.
