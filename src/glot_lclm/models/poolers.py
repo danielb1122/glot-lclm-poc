@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import nn
@@ -244,6 +245,222 @@ class DenseGraphConvLayer(nn.Module):
         return out * node_mask.unsqueeze(-1).to(out.dtype)
 
 
+def _import_pyg_glot() -> dict[str, Any]:
+    try:
+        from torch_geometric.data import Batch, Data
+        from torch_geometric.nn import GATConv, GCNConv, GINConv, GINEConv, MLP
+        from torch_geometric.utils import dense_to_sparse, softmax
+        from torch_scatter import scatter_add
+    except Exception as exc:
+        raise ImportError(
+            "Exact GLOT requires PyTorch Geometric. Install it on the cluster, for example: "
+            "`pip install torch-geometric` and "
+            "`pip install torch-scatter -f https://data.pyg.org/whl/torch-2.8.0+cu128.html`."
+        ) from exc
+    return {
+        "Batch": Batch,
+        "Data": Data,
+        "GATConv": GATConv,
+        "GCNConv": GCNConv,
+        "GINConv": GINConv,
+        "GINEConv": GINEConv,
+        "MLP": MLP,
+        "dense_to_sparse": dense_to_sparse,
+        "softmax": softmax,
+        "scatter_add": scatter_add,
+    }
+
+
+class PyGGLOTBlockPooler(nn.Module):
+    """GLOT repo implementation adapted from sentence pooling to LCLM blocks.
+
+    This follows the public GLOT code path: build PyG threshold graphs from
+    token hidden states, apply PyG graph convolution layers, ReLU after each
+    layer, concatenate Jumping-Knowledge features, and use a learned readout.
+    The only LCLM-specific additions are splitting into compression blocks,
+    projecting the GLOT output to the adapter input dimension, and optional
+    mean-pooling initialization for a fair baseline start.
+    """
+
+    def __init__(
+        self,
+        input_dim: int,
+        compression_ratio: int,
+        hidden_dim: int = 128,
+        num_layers: int = 2,
+        jk_mode: str = "cat",
+        conv: str = "gat",
+        adjacency: str = "threshold",
+        tau: float = 0.3,
+        output_dim: int | None = None,
+        init_as_mean: bool = False,
+        device: torch.device | None = None,
+    ):
+        super().__init__()
+        pyg = _import_pyg_glot()
+        self.Batch = pyg["Batch"]
+        self.Data = pyg["Data"]
+        self.GATConv = pyg["GATConv"]
+        self.GCNConv = pyg["GCNConv"]
+        self.GINConv = pyg["GINConv"]
+        self.GINEConv = pyg["GINEConv"]
+        self.MLP = pyg["MLP"]
+        self.dense_to_sparse = pyg["dense_to_sparse"]
+        self.pyg_softmax = pyg["softmax"]
+        self.scatter_add = pyg["scatter_add"]
+
+        self.input_dim = input_dim
+        self.compression_ratio = compression_ratio
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.jk_mode = jk_mode
+        self.conv = conv
+        self.adjacency = adjacency
+        self.tau = tau
+        self.init_as_mean = init_as_mean
+        self.device_override = device
+        if self.adjacency != "threshold":
+            raise ValueError("Exact GLOT implementation currently supports graph='threshold'")
+
+        self.convs = nn.ModuleList()
+        last_dim = input_dim
+        for _ in range(num_layers):
+            if conv == "gat":
+                layer = self.GATConv(last_dim, hidden_dim, edge_dim=1)
+            elif conv == "gcn":
+                layer = self.GCNConv(last_dim, hidden_dim)
+            elif conv == "gine":
+                mlp = self.MLP([last_dim, hidden_dim, hidden_dim])
+                layer = self.GINEConv(nn=mlp, train_eps=False, edge_dim=1)
+            elif conv == "gin":
+                mlp = self.MLP([last_dim, hidden_dim, hidden_dim])
+                layer = self.GINConv(nn=mlp, train_eps=False)
+            else:
+                raise ValueError(f"Unknown GLOT conv: {conv}")
+            self.convs.append(layer)
+            last_dim = hidden_dim
+
+        if jk_mode == "cat":
+            self.glot_out_dim = input_dim + num_layers * hidden_dim
+        elif jk_mode in {"max", "mean"}:
+            self.glot_out_dim = hidden_dim
+        else:
+            raise ValueError("Unknown JK mode")
+
+        self.score_layer = nn.Sequential(
+            nn.Linear(self.glot_out_dim, max(128, self.glot_out_dim // 2)),
+            nn.Tanh(),
+            nn.Linear(max(128, self.glot_out_dim // 2), 1),
+        )
+        self.out_dim = int(output_dim) if output_dim is not None else self.glot_out_dim
+        self.output_proj = (
+            nn.Identity()
+            if self.out_dim == self.glot_out_dim
+            else nn.Linear(self.glot_out_dim, self.out_dim)
+        )
+        if self.init_as_mean:
+            self._init_as_mean_pooler()
+
+    def _init_as_mean_pooler(self) -> None:
+        if self.jk_mode != "cat" or self.out_dim != self.input_dim:
+            raise ValueError("init_as_mean requires jk='cat' and output_dim equal to input_dim")
+        if not isinstance(self.output_proj, nn.Linear):
+            raise ValueError("init_as_mean requires a linear output projection")
+        with torch.no_grad():
+            nn.init.zeros_(self.score_layer[-1].weight)
+            nn.init.zeros_(self.score_layer[-1].bias)
+            nn.init.zeros_(self.output_proj.weight)
+            nn.init.zeros_(self.output_proj.bias)
+            eye = torch.eye(
+                self.input_dim,
+                dtype=self.output_proj.weight.dtype,
+                device=self.output_proj.weight.device,
+            )
+            self.output_proj.weight[:, : self.input_dim].copy_(eye)
+
+    def _threshold_edges(self, sim: torch.Tensor):
+        adj = (sim > self.tau).float()
+        return self.dense_to_sparse(adj)
+
+    def _build_pyg_graphs(self, hidden: torch.Tensor, attention_mask: torch.Tensor):
+        assert hidden.dim() == 3 and attention_mask.dim() == 2, "Bad input shapes"
+        _, length, _ = hidden.shape
+        device = self.device_override or hidden.device
+        graphs = []
+        for batch_idx in range(hidden.size(0)):
+            mask_b = attention_mask[batch_idx].to(dtype=torch.bool)
+            x_b = hidden[batch_idx, mask_b]
+            token_idx = torch.arange(length, device=device)[mask_b]
+            if x_b.size(0) == 0:
+                x_b = hidden.new_zeros(1, hidden.size(-1))
+                token_idx = torch.zeros(1, dtype=torch.long, device=device)
+            sim = F.cosine_similarity(x_b.unsqueeze(1), x_b.unsqueeze(0), dim=-1)
+            edge_index, edge_weight = self._threshold_edges(sim)
+            data = self.Data(x=x_b, edge_index=edge_index, edge_attr=edge_weight).to(device)
+            data.token_idx = token_idx
+            graphs.append(data)
+        return self.Batch.from_data_list(graphs)
+
+    def forward(self, hidden: torch.Tensor, attention_mask: torch.Tensor) -> PoolerOutput:
+        block_hidden, block_mask = _pad_to_blocks(hidden, attention_mask, self.compression_ratio)
+        bsz, n_blocks, block_size, dim = block_hidden.shape
+        flat_hidden = block_hidden.reshape(bsz * n_blocks, block_size, dim)
+        flat_mask = block_mask.reshape(bsz * n_blocks, block_size)
+
+        batch = self._build_pyg_graphs(flat_hidden, flat_mask).to(flat_hidden.device)
+        x, edge_index = batch.x, batch.edge_index
+        edge_weight = getattr(batch, "edge_attr", None)
+
+        h_list = [x]
+        h = x
+        for conv in self.convs:
+            if isinstance(conv, self.GATConv):
+                h = conv(h, edge_index, edge_attr=edge_weight)
+            elif isinstance(conv, self.GCNConv):
+                h = conv(h, edge_index, edge_weight=edge_weight.squeeze())
+            elif isinstance(conv, self.GINConv):
+                h = conv(h, edge_index)
+            elif isinstance(conv, self.GINEConv):
+                h = conv(h, edge_index, edge_attr=edge_weight)
+            h = F.relu(h)
+            h_list.append(h)
+
+        if self.jk_mode == "cat":
+            h_all = torch.cat(h_list, dim=-1)
+        elif self.jk_mode == "max":
+            h_all = torch.stack(h_list[1:], dim=-1).max(dim=-1).values
+        elif self.jk_mode == "mean":
+            h_all = torch.stack(h_list[1:], dim=-1).mean(dim=-1)
+        else:
+            raise ValueError("Unknown JK mode")
+
+        scores = self.score_layer(h_all).squeeze(-1)
+        weights = self.pyg_softmax(scores, batch.batch)
+        pooled = self.scatter_add(weights.unsqueeze(-1) * h_all, batch.batch, dim=0)
+        pooled = self.output_proj(pooled)
+        latents = pooled.view(bsz, n_blocks, self.out_dim)
+
+        valid_counts = flat_mask.sum(dim=-1).float().clamp_min(1.0)
+        edge_density = torch.tensor(
+            float(edge_index.size(1)),
+            device=flat_hidden.device,
+            dtype=flat_hidden.dtype,
+        ) / (valid_counts.square().sum().to(flat_hidden.dtype).clamp_min(1.0))
+        entropy_terms = -(weights.clamp_min(1e-8) * weights.clamp_min(1e-8).log())
+        entropy = self.scatter_add(
+            entropy_terms,
+            batch.batch,
+            dim=0,
+            dim_size=bsz * n_blocks,
+        ).mean()
+
+        return PoolerOutput(
+            latents=latents,
+            latent_mask=_block_latent_mask(block_mask),
+            aux={"edge_density": edge_density, "pool_entropy": entropy},
+        )
+
+
 class GLOTBlockPooler(nn.Module):
     """GLOT-style block-local token graph pooling.
 
@@ -414,6 +631,19 @@ def build_pooler(input_dim: int, cfg: dict) -> nn.Module:
         return AttentionBlockPooler(input_dim=input_dim, compression_ratio=ratio)
     if name == "glot":
         glot_cfg = cfg.get("glot", {})
+        if str(glot_cfg.get("implementation", "dense")) == "pyg":
+            return PyGGLOTBlockPooler(
+                input_dim=input_dim,
+                compression_ratio=ratio,
+                hidden_dim=int(glot_cfg.get("hidden_dim", 128)),
+                num_layers=int(glot_cfg.get("num_layers", 2)),
+                jk_mode=str(glot_cfg.get("jk", "cat")),
+                conv=str(glot_cfg.get("conv", glot_cfg.get("gnn_type", "gat"))),
+                adjacency=str(glot_cfg.get("graph", "threshold")),
+                tau=float(glot_cfg.get("tau", 0.3)),
+                output_dim=glot_cfg.get("output_dim"),
+                init_as_mean=bool(glot_cfg.get("init_as_mean", False)),
+            )
         return GLOTBlockPooler(
             input_dim=input_dim,
             compression_ratio=ratio,

@@ -12,3 +12,6 @@ tqdm>=4.66.0
 transformers>=4.45.0
 wandb>=0.17.0
 
+# Required for exact GLOT pooling configs.
+torch-geometric>=2.5.0
+torch-scatter>=2.1.2

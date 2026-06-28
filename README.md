@@ -44,6 +44,13 @@ For 4-bit QLoRA on NVIDIA GPUs:
 pip install bitsandbytes
 ```
 
+For exact GLOT pooling, install PyTorch Geometric. On the BGU cluster setup we have been using (`torch==2.8.0+cu128`), use:
+
+```bash
+pip install torch-geometric
+pip install torch-scatter -f https://data.pyg.org/whl/torch-2.8.0+cu128.html
+```
+
 For the optional KV cache baseline:
 
 ```bash
@@ -349,7 +356,7 @@ sbatch --array=0-2 -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glo
 - The stage flags choose what is trainable: pooler only, pooler plus decoder LoRA, or pooler plus adapter plus decoder LoRA.
 - In `*_pooler_only` configs, only the pooler is trainable; the pretrained adapter and decoder are frozen.
 - In `*_pooler_decoder_lora` configs, the pooler and decoder LoRA are trainable; the pretrained adapter is frozen.
-- `layer_style: repo` uses a dense, block-local version of the GLOT repo's `GATConv -> ReLU` layer, without the extra residual, LayerNorm, or GELU used by older configs.
+- `implementation: pyg` uses the PyTorch Geometric GLOT implementation: `Data/Batch`, threshold graph, `GATConv`, `ReLU`, Jumping-Knowledge concat, and learned readout.
 - `init_as_mean: true` initializes GLOT itself as mean pooling: the readout scores start uniform and the output projection selects the original token features from the Jumping-Knowledge representation.
 - Main experiment configs use the paper-style LCLM adapter: `RMSNorm -> Linear(input_dim, decoder_dim) -> GELU -> Linear(decoder_dim, decoder_dim)`.
 - The default config is intentionally small for 24GB GPUs. Increase max context, batch size, LoRA rank, or decoder size only after the smoke runs are stable.

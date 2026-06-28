@@ -25,6 +25,8 @@ REQUIRED_IMPORTS = [
     "safetensors",
     "sentencepiece",
     "tqdm",
+    "torch_geometric",
+    "torch_scatter",
     "rouge_score",
     "glot_lclm",
 ]
