@@ -34,8 +34,9 @@ if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file
 fi
 
 CONFIG="${CONFIG:?Set CONFIG, for example CONFIG=configs/glot_repeat_level5_qwen05_r4.yaml}"
+read -r -a EXTRA_ARGS_ARRAY <<< "${EXTRA_ARGS:-}"
 
 python -m glot_lclm.training.train \
   --config "$CONFIG" \
-  --eval-max-examples "${EVAL_MAX_EXAMPLES:-0}"
-
+  --eval-max-examples "${EVAL_MAX_EXAMPLES:-0}" \
+  "${EXTRA_ARGS_ARRAY[@]}"
