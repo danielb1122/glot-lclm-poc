@@ -10,7 +10,8 @@ from glot_lclm.data.prompts import compressed_prompt_parts, full_context_prompt_
 from glot_lclm.data.qa_examples import QAExample
 from glot_lclm.models.adapter import build_adapter, load_pretrained_adapter
 from glot_lclm.models.loaders import load_decoder, load_encoder, maybe_apply_lora
-from glot_lclm.models.poolers import build_pooler
+from glot_lclm.models.poolers import MeanBlockPooler, build_pooler
+from glot_lclm.utils.runtime import get_dtype
 
 
 @dataclass
@@ -67,6 +68,77 @@ class CompressedQAModel(nn.Module):
         adapter_checkpoint = cfg["compression"].get("adapter_checkpoint")
         if adapter_checkpoint:
             load_pretrained_adapter(self.adapter, adapter_checkpoint)
+
+    @torch.no_grad()
+    def check_pooler_mean_initialization(
+        self,
+        device: str | torch.device | None = None,
+        atol: float | None = None,
+    ) -> dict[str, float]:
+        compression_cfg = self.cfg.get("compression", {})
+        glot_cfg = compression_cfg.get("glot", {})
+        should_check = (
+            compression_cfg.get("pooler") == "glot"
+            and bool(glot_cfg.get("init_as_mean", False))
+        )
+        if not should_check:
+            return {}
+
+        target_device = torch.device(device) if device is not None else self.device
+        if target_device.type == "cuda" and not torch.cuda.is_available():
+            target_device = torch.device("cpu")
+
+        requested_dtype = get_dtype(self.cfg.get("model", {}).get("dtype"))
+        target_dtype = requested_dtype or torch.float32
+        if target_device.type == "cpu" and target_dtype in {torch.float16, torch.bfloat16}:
+            target_dtype = torch.float32
+
+        ratio = int(compression_cfg["ratio"])
+        input_dim = int(self.encoder_backbone.hidden_size)
+        seq_len = max(ratio * 2 - 3, ratio)
+        hidden = torch.randn(
+            2,
+            seq_len,
+            input_dim,
+            device=target_device,
+            dtype=target_dtype,
+        )
+        attention_mask = torch.ones(2, seq_len, device=target_device, dtype=torch.long)
+
+        was_training = self.pooler.training
+        self.pooler.eval()
+        self.pooler.to(device=target_device, dtype=target_dtype)
+        glot_latents = self.pooler(hidden, attention_mask).latents
+        mean_latents = MeanBlockPooler(input_dim=input_dim, compression_ratio=ratio)(
+            hidden,
+            attention_mask,
+        ).latents
+        if was_training:
+            self.pooler.train()
+
+        max_abs_diff = float((glot_latents - mean_latents).abs().max().detach().cpu())
+        tolerance = (
+            atol
+            if atol is not None
+            else (5e-3 if target_dtype in {torch.float16, torch.bfloat16} else 1e-5)
+        )
+        ok = max_abs_diff <= tolerance
+        if not ok:
+            raise RuntimeError(
+                "GLOT init_as_mean check failed: "
+                f"max_abs_diff={max_abs_diff:.6g}, tolerance={tolerance:.6g}. "
+                "The GLOT pooler is not initialized equivalently to mean pooling."
+            )
+
+        print(
+            "[init-check] GLOT equals mean pooling at initialization: "
+            f"max_abs_diff={max_abs_diff:.6g}, tolerance={tolerance:.6g}, "
+            f"dtype={target_dtype}, device={target_device}"
+        )
+        return {
+            "glot_mean_init_max_abs_diff": max_abs_diff,
+            "glot_mean_init_tolerance": float(tolerance),
+        }
 
     @property
     def device(self) -> torch.device:

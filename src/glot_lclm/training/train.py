@@ -158,6 +158,11 @@ def main() -> None:
     model = _move_model_if_needed(model, args.device)
     run = _wandb_init(cfg)
 
+    if has_compressor and hasattr(model, "check_pooler_mean_initialization"):
+        init_metrics = model.check_pooler_mean_initialization(device=args.device)
+        if init_metrics:
+            _log({f"init/{k}": v for k, v in init_metrics.items()}, step=0)
+
     trainable, total = count_trainable_parameters(model)
     _log({"params/trainable_initial": trainable, "params/total": total}, step=0)
 

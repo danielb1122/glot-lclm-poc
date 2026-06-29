@@ -1,6 +1,9 @@
+from types import SimpleNamespace
+
 import torch
 import pytest
 
+from glot_lclm.models.compressor_qa import CompressedQAModel
 from glot_lclm.models.poolers import (
     AttentionBlockPooler,
     GLOTBlockPooler,
@@ -168,3 +171,33 @@ def test_build_pooler_selects_exact_pyg_glot():
     )
 
     assert isinstance(pooler, PyGGLOTBlockPooler)
+
+
+def test_runtime_mean_initialization_check_passes_for_mean_initialized_glot():
+    model = CompressedQAModel.__new__(CompressedQAModel)
+    torch.nn.Module.__init__(model)
+    model.cfg = {
+        "model": {"dtype": "float32"},
+        "compression": {
+            "pooler": "glot",
+            "ratio": 4,
+            "glot": {"init_as_mean": True},
+        },
+    }
+    model.encoder_backbone = SimpleNamespace(hidden_size=12)
+    model.pooler = GLOTBlockPooler(
+        input_dim=12,
+        compression_ratio=4,
+        hidden_dim=16,
+        output_dim=12,
+        num_layers=1,
+        heads=4,
+        graph="threshold",
+        tau=0.6,
+        jk="cat",
+        init_as_mean=True,
+    )
+
+    metrics = model.check_pooler_mean_initialization(device="cpu")
+
+    assert metrics["glot_mean_init_max_abs_diff"] <= metrics["glot_mean_init_tolerance"]
