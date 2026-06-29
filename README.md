@@ -340,6 +340,20 @@ EVAL_EVERY_STEPS=50 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_decoder_lora_lr_wd.sbatch
 ```
 
+Run the longer two-epoch sweep with cosine decay and warmup. By default this launches three jobs with `(lr, weight_decay)` pairs `(2e-5, 0.02)`, `(3e-5, 0.02)`, and `(3e-5, 0.05)`, uses `batch_size=4`, `gradient_accumulation_steps=4`, evaluates every 2750 steps on 1000 validation examples, and saves the best checkpoint by `eval/f1`:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_decoder_lora.yaml \
+RUN_PREFIX=glot_lclm_squad_r16_pooler_decoder_lora \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_two_epoch_lr_wd.sbatch
+```
+
+```bash
+CONFIG=configs/mean_lclm_squad_qwen4b_r16_decoder_lora.yaml \
+RUN_PREFIX=mean_lclm_squad_r16_decoder_lora \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_two_epoch_lr_wd.sbatch
+```
+
 Sweep the GLOT threshold `tau`. By default this launches four jobs with `tau` values `0.3`, `0.5`, `0.6`, and `0.8`:
 
 ```bash

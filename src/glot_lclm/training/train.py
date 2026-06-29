@@ -105,6 +105,35 @@ def _trainable_parameters(model: torch.nn.Module):
     return [p for p in model.parameters() if p.requires_grad]
 
 
+def _build_lr_scheduler(optimizer: AdamW, stage: dict[str, Any]):
+    scheduler_type = str(stage.get("scheduler", "constant")).lower()
+    total_steps = int(stage["steps"])
+    warmup_steps = int(stage.get("warmup_steps", 0))
+    if "warmup_ratio" in stage:
+        warmup_steps = int(total_steps * float(stage["warmup_ratio"]))
+    warmup_steps = max(0, min(warmup_steps, total_steps))
+
+    if scheduler_type in {"none", "constant"} and warmup_steps == 0:
+        return None, scheduler_type, warmup_steps
+    if scheduler_type not in {"constant", "linear", "cosine"}:
+        raise ValueError(f"Unknown LR scheduler: {scheduler_type}")
+
+    def lr_lambda(step: int) -> float:
+        if warmup_steps > 0 and step < warmup_steps:
+            return float(step + 1) / float(max(1, warmup_steps))
+        if scheduler_type == "constant":
+            return 1.0
+        progress = float(step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+        progress = min(max(progress, 0.0), 1.0)
+        if scheduler_type == "linear":
+            return max(0.0, 1.0 - progress)
+        if scheduler_type == "cosine":
+            return 0.5 * (1.0 + math.cos(math.pi * progress))
+        return 1.0
+
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda), scheduler_type, warmup_steps
+
+
 def _stage_trainability(stage: dict[str, Any]) -> dict[str, bool]:
     return {
         "train_pooler": bool(stage.get("train_pooler", False)),
@@ -209,6 +238,7 @@ def main() -> None:
             raise ValueError(f"Stage has no trainable parameters: {stage_name}")
         weight_decay = float(stage.get("weight_decay", cfg["training"].get("weight_decay", 0.01)))
         optimizer = AdamW(trainable_params, lr=float(stage["lr"]), weight_decay=weight_decay)
+        lr_scheduler, scheduler_type, warmup_steps = _build_lr_scheduler(optimizer, stage)
         trainable, total = count_trainable_parameters(model)
         _log(
             {
@@ -216,6 +246,8 @@ def main() -> None:
                 "stage/name": stage_name,
                 "stage/lr": float(stage["lr"]),
                 "stage/weight_decay": weight_decay,
+                "stage/scheduler": scheduler_type,
+                "stage/warmup_steps": warmup_steps,
                 "stage/trainable_params": trainable,
                 "stage/total_params": total,
             },
@@ -245,6 +277,8 @@ def main() -> None:
             if (local_micro_step + 1) % grad_accum == 0:
                 torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
                 optimizer.step()
+                if lr_scheduler is not None:
+                    lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
                 global_step += 1
                 now = _sync_time()
@@ -257,6 +291,7 @@ def main() -> None:
                     "time/step_s": step_time_s,
                     f"time/{stage_name}_step_s": step_time_s,
                     "time/elapsed_s": now - train_start,
+                    "train/lr": optimizer.param_groups[0]["lr"],
                 }
                 metrics.update({k: float(v.detach().cpu()) for k, v in out.metrics.items()})
                 if global_step % log_every == 0:
