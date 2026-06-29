@@ -39,8 +39,18 @@ if ! python -c "import glot_lclm; print('Using glot_lclm from', glot_lclm.__file
 fi
 
 CHECKPOINT="${CHECKPOINT:-outputs/glot_squad_qwen05_8k_r4_sft/best.pt}"
+CONFIG="${CONFIG:-configs/glot_squad_qwen05_8k_r4_sft.yaml}"
+START_INDEX="${START_INDEX:-0}"
+MAX_EXAMPLES="${MAX_EXAMPLES:-0}"
+
+EXTRA_ARGS=()
+if [ "$MAX_EXAMPLES" -gt 0 ]; then
+  EXTRA_ARGS+=(--max-examples "$MAX_EXAMPLES")
+fi
 
 python -m glot_lclm.evaluation.evaluate \
-  --config configs/glot_squad_qwen05_8k_r4_sft.yaml \
+  --config "$CONFIG" \
   --checkpoint "$CHECKPOINT" \
-  --split "${SPLIT:-validation}"
+  --split "${SPLIT:-validation}" \
+  --start-index "$START_INDEX" \
+  "${EXTRA_ARGS[@]}"

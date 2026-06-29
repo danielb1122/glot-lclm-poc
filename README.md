@@ -125,6 +125,17 @@ python -m glot_lclm.evaluation.evaluate \
   --split validation
 ```
 
+Evaluate a held-out slice after using the first 1000 validation examples for checkpoint selection:
+
+```bash
+python -m glot_lclm.evaluation.evaluate \
+  --config outputs/<run_name>/config.yaml \
+  --checkpoint outputs/<run_name>/best.pt \
+  --split validation \
+  --start-index 1000 \
+  --max-examples 3000
+```
+
 ## Full Context Baseline
 
 ```bash

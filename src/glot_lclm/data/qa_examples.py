@@ -162,3 +162,11 @@ def maybe_limit(dataset: Dataset, limit: int | None) -> Dataset:
     if limit is None or limit <= 0:
         return dataset
     return dataset.select(range(min(limit, len(dataset))))
+
+
+def select_range(dataset: Dataset, start_index: int = 0, limit: int | None = None) -> Dataset:
+    start = max(0, int(start_index))
+    end = len(dataset) if limit is None or limit <= 0 else min(len(dataset), start + int(limit))
+    if start >= len(dataset):
+        return dataset.select([])
+    return dataset.select(range(start, end))

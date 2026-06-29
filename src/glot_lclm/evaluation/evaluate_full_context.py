@@ -11,7 +11,7 @@ try:
 except ImportError:  # pragma: no cover
     wandb = None
 
-from glot_lclm.data.qa_examples import load_qa_dataset, maybe_limit
+from glot_lclm.data.qa_examples import load_qa_dataset, maybe_limit, select_range
 from glot_lclm.evaluation.qa_eval import evaluate_qa
 from glot_lclm.models.compressor_qa import FullContextQAModel
 from glot_lclm.training.checkpoints import load_checkpoint
@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--split", default=None)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--start-index", type=int, default=0)
     parser.add_argument("--max-examples", type=int, default=None)
     args, unknown = parser.parse_known_args()
     args.overrides = [x[2:] if x.startswith("--") else x for x in unknown]
@@ -39,8 +40,7 @@ def main() -> None:
     raw = load_qa_dataset(cfg["dataset"])
     split = args.split or cfg["dataset"]["eval_split"]
     ds = maybe_limit(_split_or_fallback(raw, split), cfg["dataset"].get("eval_limit"))
-    if args.max_examples:
-        ds = maybe_limit(ds, args.max_examples)
+    ds = select_range(ds, start_index=args.start_index, limit=args.max_examples)
 
     model = FullContextQAModel(cfg)
     model = _move_model_if_needed(model, args.device)
@@ -49,10 +49,12 @@ def main() -> None:
         ckpt = load_checkpoint(model, args.checkpoint)
         step = int(ckpt.get("step", 0))
 
-    metrics = evaluate_qa(model, ds, cfg, mode="full_context", max_examples=args.max_examples)
+    metrics = evaluate_qa(model, ds, cfg, mode="full_context")
+    metrics["start_index"] = args.start_index
     out_dir = ensure_dir(Path(cfg["experiment"]["output_dir"]) / "eval")
     stem = Path(args.checkpoint).stem if args.checkpoint else "base"
-    out_path = out_dir / f"{stem}_{split}.json"
+    end_label = "end" if args.max_examples is None else str(args.start_index + args.max_examples)
+    out_path = out_dir / f"{stem}_{split}_{args.start_index}_{end_label}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
 
