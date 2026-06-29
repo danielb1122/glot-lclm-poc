@@ -68,7 +68,59 @@ def _paragraph_text(paragraph: Any, include_titles: bool) -> tuple[str, bool]:
     return str(text), support
 
 
+def _supporting_titles_from_row(row: dict[str, Any]) -> set[str]:
+    supporting_facts = row.get("supporting_facts")
+    if supporting_facts is None:
+        return set()
+    if isinstance(supporting_facts, dict):
+        titles = supporting_facts.get("title", [])
+        return {str(title) for title in titles}
+    if isinstance(supporting_facts, list):
+        titles = []
+        for item in supporting_facts:
+            if isinstance(item, (list, tuple)) and item:
+                titles.append(item[0])
+            elif isinstance(item, dict) and "title" in item:
+                titles.append(item["title"])
+        return {str(title) for title in titles}
+    return set()
+
+
+def _hotpot_context_from_dict(
+    context: dict[str, Any],
+    row: dict[str, Any],
+    include_titles: bool,
+) -> tuple[str, list[int]] | None:
+    titles = context.get("title")
+    sentences = context.get("sentences")
+    if not isinstance(titles, list) or not isinstance(sentences, list):
+        return None
+
+    support_titles = _supporting_titles_from_row(row)
+    parts: list[str] = []
+    support_indices: list[int] = []
+    for idx, (title, paragraph_sentences) in enumerate(zip(titles, sentences)):
+        if isinstance(paragraph_sentences, list):
+            text = " ".join(str(sentence) for sentence in paragraph_sentences)
+        else:
+            text = str(paragraph_sentences)
+        if not text:
+            continue
+        paragraph = f"Title: {title}\n{text}" if include_titles and title else text
+        parts.append(f"[{idx}] {paragraph}")
+        if str(title) in support_titles:
+            support_indices.append(idx)
+
+    return "\n\n".join(parts), support_indices
+
+
 def _context_from_row(row: dict[str, Any], include_titles: bool) -> tuple[str, list[int]]:
+    hotpot_context = row.get("context")
+    if isinstance(hotpot_context, dict):
+        parsed = _hotpot_context_from_dict(hotpot_context, row, include_titles)
+        if parsed is not None:
+            return parsed
+
     paragraphs = _first_present(row, ["paragraphs", "context", "contexts", "documents"], None)
     support_indices: list[int] = []
 
@@ -84,6 +136,9 @@ def _context_from_row(row: dict[str, Any], include_titles: bool) -> tuple[str, l
 
     context = _first_present(row, ["context", "article", "input", "long_context"], "")
     if isinstance(context, dict):
+        parsed = _hotpot_context_from_dict(context, row, include_titles)
+        if parsed is not None:
+            return parsed
         return _context_from_row({"paragraphs": list(context.values())}, include_titles)
     return str(context), support_indices
 

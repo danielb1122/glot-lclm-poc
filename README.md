@@ -218,6 +218,41 @@ sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
 
 The 16x GLOT configs use `init_as_mean: true`, so the graph pooler weights start as exact mean pooling.
 
+## HotpotQA Distractor Experiments
+
+HotpotQA is a better next compression test than SQuAD because each question includes multiple distractor paragraphs. The loader converts the Hugging Face `hotpotqa/hotpot_qa` `distractor` split into titled paragraphs and keeps the supporting paragraph indices for diagnostics.
+
+Start with a 0.25-epoch pilot before launching a full sweep:
+
+```bash
+cd /home/bohadan/glot-lclm-poc
+git pull
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+
+COMMON="training.batch_size=4 training.gradient_accumulation_steps=2 training.num_workers=8 training.stages.0.steps=2500 training.eval_every_steps=500 training.save_every_steps=500"
+
+CONFIG=configs/glot_lclm_hotpotqa_r16_pooler_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=glot_hotpotqa_r16_pilot experiment.output_dir=outputs/glot_hotpotqa_r16_pilot" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/mean_lclm_hotpotqa_qwen4b_r16_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=mean_hotpotqa_r16_pilot experiment.output_dir=outputs/mean_hotpotqa_r16_pilot" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/full_context_lclm_hotpotqa_qwen4b_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=full_context_hotpotqa_pilot experiment.output_dir=outputs/full_context_hotpotqa_pilot" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+If the pilot is stable, scale to roughly two epochs with effective batch 8:
+
+```bash
+COMMON="training.batch_size=4 training.gradient_accumulation_steps=2 training.num_workers=8 training.stages.0.steps=22600 training.eval_every_steps=5650 training.save_every_steps=5650"
+```
+
 Check repeat split overlap:
 
 ```bash
