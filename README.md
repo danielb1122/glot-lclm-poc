@@ -331,6 +331,15 @@ EVAL_MAX_EXAMPLES=200 \
 sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_decoder_lora_lr.sbatch
 ```
 
+Sweep GLOT plus decoder-LoRA around the best learning-rate region with explicit AdamW weight decay. By default this launches a 3x3 grid: learning rates `3e-5`, `5e-5`, `8e-5` crossed with weight decay values `0`, `0.01`, and `0.05`. It evaluates every 50 steps on 100 validation examples:
+
+```bash
+CONFIG=configs/glot_lclm_squad_r16_pooler_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=100 \
+EVAL_EVERY_STEPS=50 \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/sweep_lclm_glot_pooler_decoder_lora_lr_wd.sbatch
+```
+
 Sweep the GLOT threshold `tau`. By default this launches four jobs with `tau` values `0.3`, `0.5`, `0.6`, and `0.8`:
 
 ```bash

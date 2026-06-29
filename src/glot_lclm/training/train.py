@@ -207,12 +207,15 @@ def main() -> None:
         trainable_params = _trainable_parameters(model)
         if not trainable_params:
             raise ValueError(f"Stage has no trainable parameters: {stage_name}")
-        optimizer = AdamW(trainable_params, lr=float(stage["lr"]))
+        weight_decay = float(stage.get("weight_decay", cfg["training"].get("weight_decay", 0.01)))
+        optimizer = AdamW(trainable_params, lr=float(stage["lr"]), weight_decay=weight_decay)
         trainable, total = count_trainable_parameters(model)
         _log(
             {
                 "stage/index": cfg["training"]["stages"].index(stage),
                 "stage/name": stage_name,
+                "stage/lr": float(stage["lr"]),
+                "stage/weight_decay": weight_decay,
                 "stage/trainable_params": trainable,
                 "stage/total_params": total,
             },
