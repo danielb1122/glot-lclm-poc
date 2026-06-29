@@ -11,7 +11,6 @@ from glot_lclm.data.qa_examples import QAExample
 from glot_lclm.models.adapter import build_adapter, load_pretrained_adapter
 from glot_lclm.models.loaders import load_decoder, load_encoder, maybe_apply_lora
 from glot_lclm.models.poolers import MeanBlockPooler, build_pooler
-from glot_lclm.utils.runtime import get_dtype
 
 
 @dataclass
@@ -88,10 +87,7 @@ class CompressedQAModel(nn.Module):
         if target_device.type == "cuda" and not torch.cuda.is_available():
             target_device = torch.device("cpu")
 
-        requested_dtype = get_dtype(self.cfg.get("model", {}).get("dtype"))
-        target_dtype = requested_dtype or torch.float32
-        if target_device.type == "cpu" and target_dtype in {torch.float16, torch.bfloat16}:
-            target_dtype = torch.float32
+        check_dtype = torch.float32
 
         ratio = int(compression_cfg["ratio"])
         input_dim = int(self.encoder_backbone.hidden_size)
@@ -101,13 +97,13 @@ class CompressedQAModel(nn.Module):
             seq_len,
             input_dim,
             device=target_device,
-            dtype=target_dtype,
+            dtype=check_dtype,
         )
         attention_mask = torch.ones(2, seq_len, device=target_device, dtype=torch.long)
 
         was_training = self.pooler.training
         self.pooler.eval()
-        self.pooler.to(device=target_device, dtype=target_dtype)
+        self.pooler.to(device=target_device, dtype=check_dtype)
         glot_latents = self.pooler(hidden, attention_mask).latents
         mean_latents = MeanBlockPooler(input_dim=input_dim, compression_ratio=ratio)(
             hidden,
@@ -120,7 +116,7 @@ class CompressedQAModel(nn.Module):
         tolerance = (
             atol
             if atol is not None
-            else (5e-3 if target_dtype in {torch.float16, torch.bfloat16} else 1e-5)
+            else 1e-5
         )
         ok = max_abs_diff <= tolerance
         if not ok:
@@ -133,7 +129,7 @@ class CompressedQAModel(nn.Module):
         print(
             "[init-check] GLOT equals mean pooling at initialization: "
             f"max_abs_diff={max_abs_diff:.6g}, tolerance={tolerance:.6g}, "
-            f"dtype={target_dtype}, device={target_device}"
+            f"dtype={check_dtype}, device={target_device}"
         )
         return {
             "glot_mean_init_max_abs_diff": max_abs_diff,
