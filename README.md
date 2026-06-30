@@ -253,6 +253,41 @@ If the pilot is stable, scale to roughly two epochs with effective batch 8:
 COMMON="training.batch_size=4 training.gradient_accumulation_steps=2 training.num_workers=8 training.stages.0.steps=22600 training.eval_every_steps=5650 training.save_every_steps=5650"
 ```
 
+## 2WikiMultiHopQA Experiments
+
+2WikiMultiHopQA is the next multi-hop compression benchmark after HotpotQA. We use `framolfese/2WikiMultihopQA`, which follows the same titled-paragraph schema as HotpotQA and includes explicit supporting facts. The train/validation/test sizes are approximately 167k/12.6k/12.6k.
+
+Pilot:
+
+```bash
+cd /home/bohadan/glot-lclm-poc
+git pull
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+
+COMMON="training.batch_size=8 training.gradient_accumulation_steps=1 training.num_workers=8 training.stages.0.steps=2500 training.eval_every_steps=500 training.save_every_steps=500"
+
+CONFIG=configs/glot_lclm_2wiki_r16_pooler_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=glot_2wiki_r16_pilot experiment.output_dir=outputs/glot_2wiki_r16_pilot" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/mean_lclm_2wiki_qwen4b_r16_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=mean_2wiki_r16_pilot experiment.output_dir=outputs/mean_2wiki_r16_pilot" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/full_context_lclm_2wiki_qwen4b_decoder_lora.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=full_context_2wiki_pilot experiment.output_dir=outputs/full_context_2wiki_pilot" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
+Roughly two epochs with effective batch 8:
+
+```bash
+COMMON="training.batch_size=8 training.gradient_accumulation_steps=1 training.num_workers=8 training.stages.0.steps=41864 training.eval_every_steps=10466 training.save_every_steps=10466"
+```
+
 Check repeat split overlap:
 
 ```bash
