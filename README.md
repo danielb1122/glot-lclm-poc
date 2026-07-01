@@ -288,6 +288,43 @@ Roughly two epochs with effective batch 8:
 COMMON="training.batch_size=8 training.gradient_accumulation_steps=1 training.num_workers=8 training.stages.0.steps=41864 training.eval_every_steps=10466 training.save_every_steps=10466"
 ```
 
+## Full-Decoder PoC With A New Decoder
+
+These runs test whether the released LCLM decoder is biased toward the authors' mean-pooling latent distribution. The setup keeps the released LCLM encoder, replaces the decoder with `Qwen/Qwen2.5-0.5B-Instruct`, trains the adapter from scratch, and fully fine-tunes the decoder instead of using LoRA.
+
+The compressed architecture is:
+
+```text
+2Wiki context -> released LCLM encoder -> mean/GLOT pooler -> scratch adapter -> fully tuned Qwen2.5-0.5B decoder -> answer
+```
+
+The encoder is frozen and can stay in 4-bit. The decoder is not quantized, because its full weights are trained. The optimizer defaults to `adamw8bit` to reduce optimizer-state memory.
+
+Short PoC, about 0.12 epoch on 2Wiki:
+
+```bash
+cd /home/bohadan/glot-lclm-poc
+git pull
+export PYTHONPATH="$PWD/src:${PYTHONPATH:-}"
+
+COMMON="training.stages.0.steps=2500 training.eval_every_steps=500 training.save_every_steps=500"
+
+CONFIG=configs/glot_2wiki_lclm_encoder_qwen05_full_decoder_poc.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=glot_2wiki_qwen05_full_decoder_poc experiment.output_dir=outputs/glot_2wiki_qwen05_full_decoder_poc" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/mean_2wiki_lclm_encoder_qwen05_full_decoder_poc.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=mean_2wiki_qwen05_full_decoder_poc experiment.output_dir=outputs/mean_2wiki_qwen05_full_decoder_poc" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+
+CONFIG=configs/full_context_2wiki_qwen05_full_decoder_poc.yaml \
+EVAL_MAX_EXAMPLES=500 \
+EXTRA_ARGS="$COMMON experiment.name=full_context_2wiki_qwen05_full_decoder_poc experiment.output_dir=outputs/full_context_2wiki_qwen05_full_decoder_poc" \
+sbatch -p rtx6000 --gres=gpu:rtx_6000:1 scripts/slurm/train_config.sbatch
+```
+
 Check repeat split overlap:
 
 ```bash

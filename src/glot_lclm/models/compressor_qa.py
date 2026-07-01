@@ -525,6 +525,7 @@ def set_trainability(
     train_adapter: bool,
     train_encoder_lora: bool,
     train_decoder_lora: bool,
+    train_decoder_full: bool = False,
 ) -> None:
     train_full_tiny_encoder = (
         train_encoder_lora
@@ -546,8 +547,12 @@ def set_trainability(
             train = True
         elif name.startswith("encoder.") and "lora_" in name:
             train = train_encoder_lora
+        elif name.startswith("decoder.") and train_decoder_full:
+            train = True
         elif name.startswith("decoder.") and "lora_" in name:
             train = train_decoder_lora
+        elif isinstance(model, FullContextQAModel) and name.startswith("decoder.") and train_decoder_full:
+            train = True
         elif isinstance(model, FullContextQAModel) and name.startswith("decoder.") and "lora_" in name:
             train = train_decoder_lora
         param.requires_grad = train

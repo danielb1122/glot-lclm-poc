@@ -48,6 +48,19 @@ def _ensure_pad_token(tokenizer):
     tokenizer.padding_side = "right"
 
 
+def _add_config_special_tokens(tokenizer, cfg: dict, key: str) -> None:
+    tokens = list(cfg.get(key, []) or [])
+    if tokens:
+        tokenizer.add_special_tokens({"additional_special_tokens": tokens})
+
+
+def _load_in_4bit(cfg: dict, kind: str) -> bool:
+    specific_key = f"{kind}_load_in_4bit"
+    if specific_key in cfg:
+        return bool(cfg[specific_key])
+    return bool(cfg.get("load_in_4bit", False))
+
+
 def _subfolder_kwargs(subfolder: str | None) -> dict[str, str]:
     return {"subfolder": subfolder} if subfolder else {}
 
@@ -75,13 +88,15 @@ def load_encoder(name: str, cfg: dict) -> LoadedBackbone:
         trust_remote_code=cfg.get("trust_remote_code", True),
     )
     _ensure_pad_token(tokenizer)
+    _add_config_special_tokens(tokenizer, cfg, "encoder_special_tokens")
+    load_in_4bit = _load_in_4bit(cfg, "encoder")
     model = AutoModel.from_pretrained(
         name,
         **_subfolder_kwargs(subfolder),
         trust_remote_code=cfg.get("trust_remote_code", True),
         torch_dtype=get_dtype(cfg.get("dtype")),
-        quantization_config=_quantization_config(bool(cfg.get("load_in_4bit", False))),
-        device_map="auto" if bool(cfg.get("load_in_4bit", False)) else None,
+        quantization_config=_quantization_config(load_in_4bit),
+        device_map="auto" if load_in_4bit else None,
     )
     if hasattr(model, "resize_token_embeddings"):
         model.resize_token_embeddings(len(tokenizer))
@@ -94,6 +109,7 @@ def load_decoder(name: str, cfg: dict) -> LoadedBackbone:
         tokenizer_name = cfg.get("tiny_tokenizer_name", "bert-base-uncased")
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         _ensure_pad_token(tokenizer)
+        _add_config_special_tokens(tokenizer, cfg, "decoder_special_tokens")
         config = GPT2Config(
             vocab_size=len(tokenizer),
             n_embd=int(cfg.get("tiny_hidden_size", 64)),
@@ -114,13 +130,15 @@ def load_decoder(name: str, cfg: dict) -> LoadedBackbone:
         trust_remote_code=cfg.get("trust_remote_code", True),
     )
     _ensure_pad_token(tokenizer)
+    _add_config_special_tokens(tokenizer, cfg, "decoder_special_tokens")
+    load_in_4bit = _load_in_4bit(cfg, "decoder")
     model = AutoModelForCausalLM.from_pretrained(
         name,
         **_subfolder_kwargs(subfolder),
         trust_remote_code=cfg.get("trust_remote_code", True),
         torch_dtype=get_dtype(cfg.get("dtype")),
-        quantization_config=_quantization_config(bool(cfg.get("load_in_4bit", False))),
-        device_map="auto" if bool(cfg.get("load_in_4bit", False)) else None,
+        quantization_config=_quantization_config(load_in_4bit),
+        device_map="auto" if load_in_4bit else None,
     )
     if hasattr(model, "resize_token_embeddings"):
         model.resize_token_embeddings(len(tokenizer))

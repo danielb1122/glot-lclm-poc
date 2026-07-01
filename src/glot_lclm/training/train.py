@@ -7,7 +7,6 @@ import time
 from typing import Any
 
 import torch
-from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -43,6 +42,23 @@ def parse_args() -> argparse.Namespace:
 
 
 def _move_model_if_needed(model: torch.nn.Module, device: str) -> torch.nn.Module:
+    def is_quantized(module: torch.nn.Module) -> bool:
+        return any(
+            getattr(child, "is_loaded_in_4bit", False) or getattr(child, "is_loaded_in_8bit", False)
+            for child in module.modules()
+        )
+
+    quantized = is_quantized(model)
+    moved_children = False
+    for attr in ("encoder", "decoder", "pooler", "adapter"):
+        child = getattr(model, attr, None)
+        if isinstance(child, torch.nn.Module) and not is_quantized(child):
+            child.to(device)
+            moved_children = True
+
+    if moved_children:
+        return model
+
     quantized = any(
         getattr(module, "is_loaded_in_4bit", False) or getattr(module, "is_loaded_in_8bit", False)
         for module in model.modules()
@@ -105,7 +121,21 @@ def _trainable_parameters(model: torch.nn.Module):
     return [p for p in model.parameters() if p.requires_grad]
 
 
-def _build_lr_scheduler(optimizer: AdamW, stage: dict[str, Any]):
+def _build_optimizer(trainable_params: list[torch.nn.Parameter], stage: dict[str, Any], weight_decay: float):
+    optimizer_name = str(stage.get("optimizer", "adamw")).lower()
+    lr = float(stage["lr"])
+    if optimizer_name in {"adamw", "torch_adamw"}:
+        return torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay), optimizer_name
+    if optimizer_name in {"adamw8bit", "8bit_adamw", "bnb_adamw8bit"}:
+        try:
+            import bitsandbytes as bnb
+        except ImportError as exc:
+            raise ImportError("optimizer=adamw8bit requires bitsandbytes") from exc
+        return bnb.optim.AdamW8bit(trainable_params, lr=lr, weight_decay=weight_decay), optimizer_name
+    raise ValueError(f"Unknown optimizer: {optimizer_name}")
+
+
+def _build_lr_scheduler(optimizer: torch.optim.Optimizer, stage: dict[str, Any]):
     scheduler_type = str(stage.get("scheduler", "constant")).lower()
     total_steps = int(stage["steps"])
     warmup_steps = int(stage.get("warmup_steps", 0))
@@ -140,6 +170,7 @@ def _stage_trainability(stage: dict[str, Any]) -> dict[str, bool]:
         "train_adapter": bool(stage.get("train_adapter", False)),
         "train_encoder_lora": bool(stage.get("train_encoder_lora", False)),
         "train_decoder_lora": bool(stage.get("train_decoder_lora", False)),
+        "train_decoder_full": bool(stage.get("train_decoder_full", False)),
     }
 
 
@@ -237,7 +268,7 @@ def main() -> None:
         if not trainable_params:
             raise ValueError(f"Stage has no trainable parameters: {stage_name}")
         weight_decay = float(stage.get("weight_decay", cfg["training"].get("weight_decay", 0.01)))
-        optimizer = AdamW(trainable_params, lr=float(stage["lr"]), weight_decay=weight_decay)
+        optimizer, optimizer_name = _build_optimizer(trainable_params, stage, weight_decay)
         lr_scheduler, scheduler_type, warmup_steps = _build_lr_scheduler(optimizer, stage)
         trainable, total = count_trainable_parameters(model)
         _log(
@@ -246,6 +277,7 @@ def main() -> None:
                 "stage/name": stage_name,
                 "stage/lr": float(stage["lr"]),
                 "stage/weight_decay": weight_decay,
+                "stage/optimizer": optimizer_name,
                 "stage/scheduler": scheduler_type,
                 "stage/warmup_steps": warmup_steps,
                 "stage/trainable_params": trainable,
